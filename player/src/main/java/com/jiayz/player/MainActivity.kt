@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
-        soakPlayer.setDataSource(onlineAudioPath)
+        soakPlayer.setDataSource(pathUrl1)
         soakPlayer.isOnlySoft = true
         soakPlayer.setGlSurfaceView(glSurface)
         playBtn.setOnClickListener {
