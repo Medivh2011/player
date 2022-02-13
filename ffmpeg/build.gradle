@@ -1,0 +1,67 @@
+/*
+ * Copyright (c) 2022. 深圳市七棵橡树科技有限公司 Shenzhen Sevenoak Technology Co., Ltd
+ * 项目名称: CFEco
+ * 模块名称: CFEco.components.ffmpeg
+ * 邮箱：Medivh.Tian@jiayz.com
+ * 修改人：dell
+ * 上次修改时间：2022年01月23日 19:42:23
+ *
+ */
+
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    compileSdkVersion 30
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 30
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++14 -frtti -fexceptions"
+                cFlags "-DSTDC_HEADERS -D__ANDROID_API__=21 -std=c11 -Wall -mfloat-abi=softfp -mfpu=vfp " +
+                        "-ffast-math"
+                abiFilters 'armeabi-v7a','arm64-v8a'
+
+            }
+        }
+        ndk{
+            abiFilters 'armeabi-v7a','arm64-v8a'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('CMakeLists.txt')
+            version '3.10.2'
+        }
+    }
+
+    repositories {
+        flatDir {
+            dirs 'libs'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    compileOnly 'androidx.appcompat:appcompat:1.2.0'
+    compileOnly 'com.google.android.material:material:1.2.1'
+}

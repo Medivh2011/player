@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity"
+    >
+
+    <com.jiayz.ffmpeg.opengles.SoakGlSurfaceView
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:id="@+id/gl_surface"
+        android:layout_centerInParent="true"
+        />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+
+
+
+        <LinearLayout
+            android:id="@+id/ll_control"
+            android:layout_alignParentBottom="true"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            >
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/play"
+                android:text="播放"
+                />
+
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/pause"
+                android:text="暂停"
+                android:layout_marginLeft="20dp"
+                />
+        </LinearLayout>
+
+
+        <LinearLayout
+            android:layout_above="@id/ll_control"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            >
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/tv_current_time"
+                android:text="00:00:00"
+                android:layout_marginRight="5dp"
+                android:layout_marginLeft="5dp"
+                />
+            <SeekBar
+                android:id="@+id/sb_seek"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="40dp"
+                android:padding="5dp"
+                android:layout_marginStart="5dp"
+                />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/tv_total_time"
+                android:text="00:00:00"
+                android:layout_marginRight="5dp"
+                android:layout_marginLeft="5dp"
+                />
+        </LinearLayout>
+
+
+
+    </RelativeLayout>
+
+
+</RelativeLayout>
