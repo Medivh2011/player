@@ -68,8 +68,6 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN);
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
         soakPlayer.setDataSource(onlineAudioPath)
@@ -230,20 +228,18 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         }
 
     }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        //setOrientation()
-    }
     private var isFullScreen = false
     private fun setOrientation() {
         Log.d(TAG, "setOrientation")
         if (isFullScreen){
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             isFullScreen = false
         }else{
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             isFullScreen = true
+
         }
         val outMetrics = DisplayMetrics()
         windowManager.defaultDisplay.getRealMetrics(outMetrics)
