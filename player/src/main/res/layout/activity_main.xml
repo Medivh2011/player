@@ -20,33 +20,15 @@
 
 
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_alignParentBottom="true"
+        android:id="@+id/ll_control"
+        >
 
         <LinearLayout
-            android:id="@+id/ll_control"
-            android:layout_alignParentBottom="true"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            >
-            <Button
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:id="@+id/play"
-                android:text="播放"
-                />
-
-            <Button
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:id="@+id/pause"
-                android:text="暂停"
-                android:layout_marginLeft="20dp"
-                />
-        </LinearLayout>
-
-
-        <LinearLayout
-            android:layout_above="@id/ll_control"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -76,6 +58,38 @@
                 android:layout_marginLeft="5dp"
                 />
         </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            >
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/play"
+                android:text="播放"
+                />
+
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/pause"
+                android:text="暂停"
+                android:layout_marginLeft="20dp"
+                />
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/full_screen"
+                android:text="全屏"
+                android:layout_marginLeft="20dp"
+                />
+        </LinearLayout>
+
+
+
+    </LinearLayout>
+
 
 
 
