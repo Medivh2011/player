@@ -2,6 +2,7 @@ package com.jiayz.player
 
 import android.Manifest
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
@@ -52,14 +53,14 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
     private val pathUrl = "/storage/emulated/0/Movies/2022-02-10-16-32-31.mp4"
     private val pathUrl1 = "/storage/emulated/0/Music/虎二-即使知道.flac"
     private val pathUrl2 = "/storage/emulated/0/SmartRecorder(TEST)/RecordFiles/audio/2022-02-11-13-47-10.wav"
-    private val pathUrl4 = "/storage/emulated/0/Music/萧敬腾&张杰&袁娅维TIARAY&欧阳娜娜&陈立农-我们同唱一首歌.mp3"
+    private val pathUrl4 = "/storage/emulated/0/Music/萧敬腾&张杰&袁娅维TIA RAY&欧阳娜娜&陈立农-我们同唱一首歌.mp3"
     private val onlineVideoPath = "http://mirror.aarnet.edu.au/pub/TED-talks/911Mothers_2010W-480p.mp4"
     private val pathUrl5 = "https://stream7.iqilu.com/10339/upload_transcode/202002/18/20200218114723HDu3hhxqIT.mp4"
     private val pathUrl12 = "/storage/emulated/0/Music/虎二 - 刺青.flac"
     private val pathUrl11 = "/storage/emulated/0/Music/虎二 - 窗.mp3"
    //凡人修仙传-21.mp4
     private val onlineAudioPath = "/storage/emulated/0/Movies/凡人修仙传-21.mp4"
-    private val playUrl = pathUrl11
+    private val playUrl = pathUrl5
     companion object{
         private const val TAG = "MainActivity"
     }
@@ -141,14 +142,14 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
                 width = w
                 height = h
                 Log.e(TAG, "setVideoSizeChangedListener: width: $videoWidth height: $videoHeight, dar: $dar")
-                val dar: Float = dar
+                var dar: Float = dar
                 val viewWidth: Int = getScreenWidth(this@MainActivity)
                 var viewHeight = 0
                 viewHeight =
                     if (dar.compareTo(Float.NaN) == 0 || dar.compareTo(0.0f) == 0) {
                         (viewWidth * 1.0f / videoWidth).toInt()
                     } else {
-                       if(videoWidth > videoHeight) (viewWidth * 1.0f / dar).toInt() else (viewWidth * 1.0f*dar).toInt()
+                        (viewWidth * 1.0f / dar).toInt()
                     }
                 val params = RelativeLayout.LayoutParams(viewWidth, viewHeight)
                 params.addRule(RelativeLayout.CENTER_IN_PARENT)
@@ -208,8 +209,14 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             isFullScreen = true
         }
-        widthPixels = getScreenHeight(this@MainActivity)
-        heightPixels = getScreenWidth(this@MainActivity)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R){
+            widthPixels = getScreenHeight(this@MainActivity)
+            heightPixels = getScreenWidth(this@MainActivity)
+        }else{
+            widthPixels = getScreenWidth(this@MainActivity)
+            heightPixels =  getScreenHeight(this@MainActivity)
+        }
+
         Log.e(TAG, "setOrientation: ScreenWidth: $widthPixels  ScreenHeight: $heightPixels"  )
         GlobalScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {

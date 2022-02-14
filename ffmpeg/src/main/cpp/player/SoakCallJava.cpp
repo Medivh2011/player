@@ -132,9 +132,7 @@ void SoakCallJava::onCallRenderYUV(int width, int height, uint8_t *fy, uint8_t *
 
     JNIEnv *jniEnv;
     if (javaVM->AttachCurrentThread(&jniEnv, 0) != JNI_OK) {
-
         LOGE("call onCallComplete worng");
-
         return;
     }
 
@@ -161,9 +159,7 @@ bool SoakCallJava::onCallIsSupportVideo(const char *ffCodecName) {
     bool support = false;
     JNIEnv *jniEnv;
     if (javaVM->AttachCurrentThread(&jniEnv, 0) != JNI_OK) {
-
         LOGE("call onCallComplete worng");
-
         return support;
     }
 

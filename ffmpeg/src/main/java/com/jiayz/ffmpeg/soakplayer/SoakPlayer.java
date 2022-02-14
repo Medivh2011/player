@@ -150,12 +150,9 @@ public class SoakPlayer {
     {
         mTimeInfo = null;
         mDuration = 0;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                _stop();
-                releaseMediaCodec();
-            }
+        new Thread(() -> {
+            _stop();
+            releaseMediaCodec();
         }).start();
     }
 
@@ -347,7 +344,11 @@ public class SoakPlayer {
     //CalledByNative
     public void onCallVideoSizeChanged(int width, int height, float dar) {
         LogUtils.d("onCallVideoSizeChanged="+width+", height="+height + ", dar="+dar);
-        mOnVideoSizeChangedListener.onVideoSizeChanged(width, height, dar);
+        if (mOnVideoSizeChangedListener != null ){
+            if (Float.compare(dar,Float.NaN) == 0) dar = 1.7778f;
+            mOnVideoSizeChangedListener.onVideoSizeChanged(width, height, dar);
+        }
+
     }
 
 }
