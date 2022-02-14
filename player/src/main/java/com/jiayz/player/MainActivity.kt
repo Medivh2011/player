@@ -1,27 +1,24 @@
 package com.jiayz.player
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import android.os.Bundle
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.jiayz.ffmpeg.opengles.SoakGlSurfaceView
+import com.jiayz.ffmpeg.opengles.SoakGLSurfaceView
 import com.jiayz.ffmpeg.soakplayer.SoakPlayer
 import com.jiayz.ffmpeg.util.PermissionUtils
-import com.jiayz.ffmpeg.util.SoakTimeUtil
+import com.jiayz.ffmpeg.util.TimeUtils
 import kotlinx.coroutines.*
 
 
 class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
 
-    private val glSurface by lazy<SoakGlSurfaceView> { findViewById(R.id.gl_surface) }
+    private val glSurface by lazy<SoakGLSurfaceView> { findViewById(R.id.gl_surface) }
 
     private val playBtn by lazy<Button> { findViewById(R.id.play) }
 
@@ -70,14 +67,11 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
-        soakPlayer.setDataSource(onlineAudioPath)
-        soakPlayer.isOnlySoft = true
-        soakPlayer.setGlSurfaceView(glSurface)
+        soakPlayer.setGLSurfaceView(glSurface)
         playBtn.setOnClickListener {
             if (isPlayStop){
-//                soakPlayer.setDataSource(pathUrl)
-//                soakPlayer.isOnlySoft = true
-                soakPlayer.prepared()
+                soakPlayer.setDataSource(onlineAudioPath)
+                soakPlayer.prepare()
             }else{
                 soakPlayer.resume()
             }
@@ -94,9 +88,11 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
                 position = soakPlayer.duration * progress / 100
             }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
                 isSeek = true
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+
                 soakPlayer.seek(position)
             }
         })
@@ -120,17 +116,17 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         /**
          * 更新时间戳
          */
-        soakPlayer.setOnInfoListener {
+        soakPlayer.setOnTimeUpdateListener {
           //  Log.e(TAG, "soakPlayer: -----------------setOnInfoListener-----totalSeconds: ${it.totalSeconds}-- currentSeconds: ${it.currentSeconds}-----" )
             launch(Dispatchers.Main) {
-                totalTime.text = SoakTimeUtil.secdsToDateFormat(it.totalSeconds)
-                currentTime.text = SoakTimeUtil.secdsToDateFormat(it.currentSeconds)
+                totalTime.text = TimeUtils.secdsToDateFormat(it.totalTime,it.totalTime)
+                currentTime.text = TimeUtils.secdsToDateFormat(it.currentTime,it.totalTime)
                 if (isSeek) {
-                    seekBar.progress = position * 100 / it.totalSeconds
+                    seekBar.progress = position * 100 / it.totalTime
                     isSeek = false
                 } else {
                     seekBar.progress =
-                        it.currentSeconds * 100 / it.totalSeconds
+                        it.currentTime * 100 / it.totalTime
                 }
             }
 
@@ -140,9 +136,9 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
          * 播放完成回调
          */
         soakPlayer.setOnCompleteListener {
-            soakPlayer.stop(false)
+            soakPlayer.stop()
         }
-        soakPlayer.setVideoSizeChangedListener { w, h, dar ->
+        soakPlayer.setOnVideoSizeChangedListener  { w, h, dar ->
             launch(Dispatchers.Main) {
                 val videoWidth: Int = w
                 val videoHeight: Int = h
@@ -165,23 +161,6 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
 
             }
         }
-
-        /**
-         * 播放停止回调
-         */
-        soakPlayer.setOnStopListener {
-            Log.e(TAG, "soakPlayer: ---setOnStopListener------play is stop" )
-            launch (Dispatchers.Main){
-               // isPlayStop = true
-                position = 0
-                seekBar.progress = 0
-                soakPlayer.seek(0)
-                delay(20)
-                soakPlayer.prepared()
-            }
-
-        }
-
         /**
          * 播放出现错误
          */
@@ -190,20 +169,14 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
                 Toast.makeText(applicationContext,"play has some error happened,code:$code  msg:$msg",Toast.LENGTH_SHORT).show()
             }
         }
-
-        /**
-         * 截取播放界面
-         */
-        soakPlayer.setOnCutVideoImgListener {
-            it?.let {
-                Log.e(TAG, "soakPlayer: ---setOnCutVideoImgListener------bitmap is cut" )
-            }
-        }
         val storagePermissions = arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        PermissionUtils.checkAndRequestMorePermissions(this,storagePermissions,0x12) {
-            soakPlayer.prepared()
+        PermissionUtils.checkAndRequestMorePermissions(this,0x12,storagePermissions) {
+            soakPlayer.setDataSource(pathUrl5)
+            soakPlayer.prepare()
             controlVideo(false)
         }
+
+
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -230,21 +203,18 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
     }
     private var isFullScreen = false
     private fun setOrientation() {
-        Log.d(TAG, "setOrientation")
         if (isFullScreen){
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             isFullScreen = false
         }else{
             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             isFullScreen = true
-
         }
-//        val outMetrics = DisplayMetrics()
-//        windowManager.defaultDisplay.getRealMetrics(outMetrics)
-        widthPixels =  getScreenWidth(this@MainActivity)
-        heightPixels =  getScreenHeight(this@MainActivity)
+        widthPixels = getScreenHeight(this@MainActivity)
+        heightPixels = getScreenWidth(this@MainActivity)
+        Log.e(TAG, "setOrientation: ScreenWidth: $widthPixels  ScreenHeight: $heightPixels"  )
         GlobalScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 glSurface.layoutParams?.let {

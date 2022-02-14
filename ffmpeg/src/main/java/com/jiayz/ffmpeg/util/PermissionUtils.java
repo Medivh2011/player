@@ -158,7 +158,7 @@ public class PermissionUtils {
     /**
      * 检测并申请多个权限
      */
-    public static void checkAndRequestMorePermissions(Context context, String[] permissions, int requestCode, PermissionRequestSuccessCallBack callBack) {
+    public static void checkAndRequestMorePermissions(Context context, int requestCode, String[] permissions, PermissionRequestSuccessCallBack callBack) {
         List<String> permissionList = checkMorePermissions(context, permissions);
         if (permissionList.size() == 0) {  // 用户已授予权限
             callBack.onHasPermission();

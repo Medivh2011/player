@@ -7,7 +7,7 @@
     tools:context=".MainActivity"
     >
 
-    <com.jiayz.ffmpeg.opengles.SoakGlSurfaceView
+    <com.jiayz.ffmpeg.opengles.SoakGLSurfaceView
         android:layout_width="match_parent"
         android:layout_height="300dp"
         android:id="@+id/gl_surface"

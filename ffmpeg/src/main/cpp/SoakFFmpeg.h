@@ -1,64 +1,58 @@
-#ifndef SOAKPLAYER_SOAKFFMPEG_H
-#define SOAKPLAYER_SOAKFFMPEG_H
 
-#include "AndroidLog.h"
+#ifndef CUSTOM_FFMPEG_H
+#define CUSTOM_FFMPEG_H
 
-#include "SoakBasePlayer.h"
-#include "SoakJavaCall.h"
+#include "SoakCallJava.h"
+#include "pthread.h"
 #include "SoakAudio.h"
+#include "PlayStatus.h"
 #include "SoakVideo.h"
-#include "SoakPlayStatus.h"
-#include "SoakAudioChannel.h"
 
 extern "C"
 {
-#include <libavformat/avformat.h>
-#include "pthread.h"
-}
+#include "libavformat/avformat.h"
+#include "libavutil/rational.h"
+#include <libavutil/time.h>
+};
 
 
 class SoakFFmpeg {
 
 public:
-    const char *urlpath = NULL;
-    SoakJavaCall *soakJavaCall = NULL;
-    pthread_t decodThread;
-    AVFormatContext *pFormatCtx = NULL;//封装格式上下文
-    int duration = 0;
-    SoakAudio *soakAudio = NULL;
-    SoakVideo *soakVideo = NULL;
-    SoakPlayStatus *soakPlayStatus = NULL;
-    bool exit = false;
-    bool exitByUser = false;
-    int mimeType = 1;
-    bool isavi = false;
-    bool isOnlyMusic = false;
-
-    std::deque<SoakAudioChannel*> audiochannels;
-    std::deque<SoakAudioChannel*> videochannels;
-
+    SoakCallJava *callJava = NULL;
+    const char* url = NULL;
+    pthread_t decodeThread;
+    AVFormatContext *pFormatCtx = NULL;
+    SoakAudio *audio = NULL;
+    SoakVideo *video = NULL;
+    SoakPlaystatus *playStatus = NULL;
     pthread_mutex_t init_mutex;
+    bool exit = false;
+    int duration = 0;
     pthread_mutex_t seek_mutex;
+    bool supportMediacodec = false;
+
+    const AVBitStreamFilter *bsFilter = NULL;
 
 public:
-    SoakFFmpeg(SoakJavaCall *javaCall, const char *urlpath, bool onlymusic);
+    SoakFFmpeg(SoakPlaystatus *status, SoakCallJava *callJava, const char *url);
     ~SoakFFmpeg();
-    int preparedFFmpeg();
-    int decodeFFmpeg();
-    int start();
-    int seek(int64_t sec);
-    int getDuration();
-    int getAvCodecContext(AVCodecParameters * parameters, SoakBasePlayer *basePlayer);
-    void release();
+
+    void prepare();
+    void decodeFFmpegThread();
+    void start();
+
     void pause();
+
     void resume();
-    int getMimeType(const char* codecName);
-    void setAudioChannel(int id);
-    void setVideoChannel(int id);
-    int getAudioChannels();
-    int getVideoWidth();
-    int getVideoHeight();
+
+    void release();
+
+    void seek(int64_t seconds);
+
+    int getCodecContext(AVCodecParameters *avCodecParameters, AVCodecContext **avCodecContext);
+
 };
 
 
-#endif
+#endif //CUSTOM_FFMPEG_H

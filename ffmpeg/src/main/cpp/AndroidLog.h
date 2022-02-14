@@ -1,7 +1,6 @@
 #ifndef _ANDROIDLOG_H
 #define _ANDROIDLOG_H
 
-
 #include <android/log.h>
 
 #define LOG_DEBUG 0

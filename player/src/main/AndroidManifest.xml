@@ -17,7 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Player">
         <activity android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|keyboard|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
             android:hardwareAccelerated="true"
             android:screenOrientation="portrait"
             >

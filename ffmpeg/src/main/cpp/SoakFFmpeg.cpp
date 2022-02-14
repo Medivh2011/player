@@ -1,544 +1,356 @@
+
 #include "SoakFFmpeg.h"
-void *decodeThread(void *data)
-{
-    auto *fFmpeg = (SoakFFmpeg *) data;
-    fFmpeg->decodeFFmpeg();
-    pthread_exit(&fFmpeg->decodThread);
-}
 
-
-int SoakFFmpeg::preparedFFmpeg() {
-    pthread_create(&decodThread, nullptr, decodeThread, this);
-    return 0;
-}
-
-SoakFFmpeg::SoakFFmpeg(SoakJavaCall *javaCall, const char *url, bool onlymusic) {
+SoakFFmpeg::SoakFFmpeg(SoakPlaystatus *status, SoakCallJava *callJava, const char *url) {
+    this->playStatus = status;
+    this->callJava = callJava;
+    this->url = url;
+    exit = false;
     pthread_mutex_init(&init_mutex, nullptr);
     pthread_mutex_init(&seek_mutex, nullptr);
-    exitByUser = false;
-    isOnlyMusic = onlymusic;
-    soakJavaCall = javaCall;
-    urlpath = url;
-    soakPlayStatus = new SoakPlayStatus();
 }
 
-int avformat_interrupt_cb(void *ctx)
-{
+void *decodeFFmpeg(void *data) {
+    auto *fFmpeg = (SoakFFmpeg *) data;
+    fFmpeg->decodeFFmpegThread();
+    return nullptr;
+}
+
+void SoakFFmpeg::prepare() {
+    pthread_create(&decodeThread, nullptr, decodeFFmpeg, this);
+}
+
+int avformat_callback(void *ctx) {
     auto *fFmpeg = (SoakFFmpeg *) ctx;
-    if(fFmpeg->soakPlayStatus->exit)
-    {
-        LOGE("avformat_interrupt_cb return 1")
+    if (fFmpeg->playStatus->exit) {
         return AVERROR_EOF;
     }
-        LOGE("avformat_interrupt_cb return 0")
     return 0;
 }
 
-int SoakFFmpeg::decodeFFmpeg() {
+
+void SoakFFmpeg::decodeFFmpegThread() {
     pthread_mutex_lock(&init_mutex);
-    exit = false;
-    isavi = false;
-   // av_register_all();
     avformat_network_init();
+    pFormatCtx = avformat_alloc_context();
+    pFormatCtx->interrupt_callback.callback = avformat_callback;
+    pFormatCtx->interrupt_callback.opaque = this;
     int width = 0, height = 0;
     int codec_num = 0, codec_den = 0;
-    int fps;
-    pFormatCtx = avformat_alloc_context();
-    if (avformat_open_input(&pFormatCtx, urlpath, nullptr, nullptr) != 0)
-    {
-       LOGE("can not open url:%s", urlpath)
-        if(soakJavaCall != nullptr)
-        {
-            soakJavaCall->onError(SOAK_THREAD_CHILD, SOAK_FFMPEG_CAN_NOT_OPEN_URL, "can not open url");
-        }
+    if (avformat_open_input(&pFormatCtx, url, nullptr, nullptr) != 0) {
+        LOGE("can not open url :%s", url)
+        callJava->onCallError(CHILD_THREAD, 1001, "can not open url");
         exit = true;
         pthread_mutex_unlock(&init_mutex);
-        return -1;
+        return;
     }
-    pFormatCtx->interrupt_callback.callback = avformat_interrupt_cb;
-    pFormatCtx->interrupt_callback.opaque = this;
-
-    if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
-    {
-
-        LOGE("can not find streams from %s", urlpath);
-        if(soakJavaCall != nullptr) {
-            soakJavaCall->onError(SOAK_THREAD_CHILD, SOAK_FFMPEG_CAN_NOT_FIND_STREAMS,
-                                  "can not find streams from url");
-        }
+    if (avformat_find_stream_info(pFormatCtx, nullptr) < 0) {
+        LOGE("can not find streams from %s", url)
+        callJava->onCallError(CHILD_THREAD, 1002, "can not find streams from url");
         exit = true;
         pthread_mutex_unlock(&init_mutex);
-        return -1;
+        return;
     }
-
-    if(pFormatCtx == nullptr)
-    {
-        exit = true;
-        pthread_mutex_unlock(&init_mutex);
-        return -1;
-    }
-
-    duration = pFormatCtx->duration / 1000000;
-    LOGD("channel numbers is %d", pFormatCtx->nb_streams);
-    for(int i = 0; i < pFormatCtx->nb_streams; i++)
-    {
-        if(pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO )//音频
+    for (int i = 0; i < pFormatCtx->nb_streams; i++) {
+        if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)//得到音频流
         {
-            LOGE("音频")
-            auto *pChannel = new SoakAudioChannel(i, pFormatCtx->streams[i]->time_base);
-            audiochannels.push_front(pChannel);
-        }
-        else if(pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)//视频
-        {
-            if(!isOnlyMusic)
-            {
-                LOGE("视频")
+            if (audio == nullptr) {
+                audio = new SoakAudio(playStatus, pFormatCtx->streams[i]->codecpar->sample_rate,
+                                      callJava);
+                audio->streamIndex = i;
+                audio->codecPar = pFormatCtx->streams[i]->codecpar;
+                audio->duration = pFormatCtx->duration / AV_TIME_BASE;
+                audio->time_base = pFormatCtx->streams[i]->time_base;
+                duration = audio->duration;
+            }
+        } else if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            if (video == nullptr) {
+                video = new SoakVideo(playStatus, callJava);
+                video->streamIndex = i;
+                video->codecPar = pFormatCtx->streams[i]->codecpar;
+                video->time_base = pFormatCtx->streams[i]->time_base;
                 width = pFormatCtx->streams[i]->codecpar->width;
                 height = pFormatCtx->streams[i]->codecpar->height;
                 codec_num = pFormatCtx->streams[i]->codecpar->sample_aspect_ratio.num;
                 codec_den = pFormatCtx->streams[i]->codecpar->sample_aspect_ratio.den;
+
                 int num = pFormatCtx->streams[i]->avg_frame_rate.num;
                 int den = pFormatCtx->streams[i]->avg_frame_rate.den;
-                if(num != 0 && den != 0)
-                {
-                    //int fps = num / den;//[25 / 1]
-                     fps = pFormatCtx->streams[i]->avg_frame_rate.num / pFormatCtx->streams[i]->avg_frame_rate.den;
-                    auto *pChannel = new SoakAudioChannel(i, pFormatCtx->streams[i]->time_base, fps);
-                   // video->defaultDelayTime = 1.0 / fps;
-                    videochannels.push_front(pChannel);
+                if (num != 0 && den != 0) {
+                    int fps = num / den;//[25 / 1]
+                    video->defaultDelayTime = 1.0 / fps;
                 }
             }
         }
     }
 
-
-    if(audiochannels.size() > 0)
-    {
-        soakAudio = new SoakAudio(soakPlayStatus, soakJavaCall);
-        setAudioChannel(0);
-        if(soakAudio->streamIndex >= 0 && soakAudio->streamIndex < pFormatCtx->nb_streams)
-        {
-            if(getAvCodecContext(pFormatCtx->streams[soakAudio->streamIndex]->codecpar, soakAudio) != 0)
-            {
-                exit = true;
-                pthread_mutex_unlock(&init_mutex);
-                return 1;
-            }
-        }
-
-
+    if (audio != nullptr) {
+        getCodecContext(audio->codecPar, &audio->avCodecContext);
     }
-    if(videochannels.size() > 0)
-    {
-        soakVideo = new SoakVideo(soakJavaCall, soakAudio, soakPlayStatus);
-        setVideoChannel(0);
-        if(soakVideo->streamIndex >= 0 && soakVideo->streamIndex < pFormatCtx->nb_streams)
-        {
-            if(getAvCodecContext(pFormatCtx->streams[soakVideo->streamIndex]->codecpar, soakVideo) != 0)
-            {
-                exit = true;
-                pthread_mutex_unlock(&init_mutex);
-                return 1;
-            }
-        }
+    if (video != nullptr) {
+        getCodecContext(video->codecPar, &video->avCodecContext);
     }
 
-    if(soakAudio == nullptr && soakVideo == nullptr)
-    {
-        exit = true;
-        pthread_mutex_unlock(&init_mutex);
-        return 1;
-    }
-    if(soakAudio != nullptr)
-    {
-        soakAudio->duration = pFormatCtx->duration / 1000000;
-        soakAudio->sample_rate = soakAudio->avCodecContext->sample_rate;
-        if(soakVideo != nullptr)
-        {
-            soakAudio->setVideo(true);
-
-        }
-    }
-    if(soakVideo != nullptr)
-    {
-            LOGE("codec name is %s", soakVideo->avCodecContext->codec->name)
-            LOGE("codec long name is %s", soakVideo->avCodecContext->codec->long_name)
-        soakVideo->defaultDelayTime = 1.0 / fps;
-        LOGE("defaultDelayTime: = %lf", soakVideo->defaultDelayTime)
-        if(!soakJavaCall->isOnlySoft(SOAK_THREAD_CHILD))
-        {
-            mimeType = getMimeType(soakVideo->avCodecContext->codec->name);
-        } else{
-            mimeType = -1;
-        }
-
-        if(mimeType != -1)
-        {
-            soakJavaCall->onInitMediacodec(SOAK_THREAD_CHILD, mimeType, soakVideo->avCodecContext->width, soakVideo->avCodecContext->height, soakVideo->avCodecContext->extradata_size, soakVideo->avCodecContext->extradata_size, soakVideo->avCodecContext->extradata, soakVideo->avCodecContext->extradata);
-        }
-        soakVideo->duration = pFormatCtx->duration / 1000000;
-    }
-
-    LOGE("准备ing")
-    if (soakJavaCall){
-        int num ,den;
-        av_reduce(&num, &den, width * (int64_t)codec_num, height * (int64_t)codec_den, 1080 * 1920);
-        float dar = num *1.0f/den;
-        if (dar == 0) dar = 1.7777778f;
-        soakJavaCall->onVideoSizeChanged(SOAK_THREAD_CHILD,width,height,dar);
-    }
-    soakJavaCall->onParpared(SOAK_THREAD_CHILD);
-    LOGE("准备end")
-    exit = true;
-    pthread_mutex_unlock(&init_mutex);
-    return 0;
-}
-
-int SoakFFmpeg::getAvCodecContext(AVCodecParameters *parameters, SoakBasePlayer *basePlayer) {
-
-    AVCodec *dec = avcodec_find_decoder(parameters->codec_id);
-    if(!dec)
-    {
-        soakJavaCall->onError(SOAK_THREAD_CHILD, 3, "get avcodec fail");
-        exit = true;
-        return 1;
-    }
-    basePlayer->avCodecContext = avcodec_alloc_context3(dec);
-    if(!basePlayer->avCodecContext)
-    {
-        soakJavaCall->onError(SOAK_THREAD_CHILD, 4, "alloc avcodecctx fail");
-        exit = true;
-        return 1;
-    }
-    if(avcodec_parameters_to_context(basePlayer->avCodecContext, parameters) != 0)
-    {
-        soakJavaCall->onError(SOAK_THREAD_CHILD, 5, "copy avcodecctx fail");
-        exit = true;
-        return 1;
-    }
-    if(avcodec_open2(basePlayer->avCodecContext, dec, 0) != 0)
-    {
-        soakJavaCall->onError(SOAK_THREAD_CHILD, 6, "open avcodecctx fail");
-        exit = true;
-        return 1;
-    }
-    return 0;
-}
-
-
-SoakFFmpeg::~SoakFFmpeg() {
-    pthread_mutex_destroy(&init_mutex);
-    LOGE("SoakFFmpegeg() 释放了")
-}
-
-
-int SoakFFmpeg::getDuration() {
-    return duration;
-}
-
-int SoakFFmpeg::start() {
-    exit = false;
-    int count = 0;
-    int ret  = -1;
-    if(soakAudio != nullptr)
-    {
-        soakAudio->playAudio();
-    }
-    if(soakVideo != nullptr)
-    {
-        if(mimeType == -1)
-        {
-            soakVideo->playVideo(0);
-        }
-        else
-        {
-            soakVideo->playVideo(1);
-        }
-    }
-
-    AVBitStreamFilterContext* mimType = nullptr;
-    if(mimeType == 1)
-    {
-        mimType =  av_bitstream_filter_init("h264_mp4toannexb");
-    }
-    else if(mimeType == 2)
-    {
-        mimType =  av_bitstream_filter_init("hevc_mp4toannexb");
-    }
-    else if(mimeType == 3)
-    {
-        mimType =  av_bitstream_filter_init("h264_mp4toannexb");
-    }
-    else if(mimeType == 4)
-    {
-        mimType =  av_bitstream_filter_init("h264_mp4toannexb");
-    }
-
-    while(!soakPlayStatus->exit)
-    {
-        exit = false;
-        if(soakPlayStatus->pause)//暂停
-        {
-            av_usleep(1000 * 100);
-            continue;
-        }
-        if(soakAudio != nullptr && soakAudio->queue->getAvPacketSize() > 100)
-        {
-//            LOGE("soakAudio 等待..........");
-            av_usleep(1000 * 100);
-            continue;
-        }
-        if(soakVideo != nullptr && soakVideo->queue->getAvPacketSize() > 100)
-        {
-//            LOGE("soakVideo 等待..........");
-            av_usleep(1000 * 100);
-            continue;
-        }
-        AVPacket *packet = av_packet_alloc();
-        pthread_mutex_lock(&seek_mutex);
-        ret = av_read_frame(pFormatCtx, packet);
-        pthread_mutex_unlock(&seek_mutex);
-        if(soakPlayStatus->seek)
-        {
-            av_packet_free(&packet);
-            av_free(packet);
-            continue;
-        }
-        if(ret == 0)
-        {
-            if(soakAudio != nullptr && packet->stream_index == soakAudio->streamIndex)
-            {
-                count++;
-                LOGE("解码第 %d 帧", count)
-                soakAudio->queue->putAvpacket(packet);
-            }else if(soakVideo != nullptr && packet->stream_index == soakVideo->streamIndex)
-            {
-                if(mimType != nullptr && !isavi)
-                {
-                    uint8_t *data;
-                    //av_bsf_send_packet
-                    av_bitstream_filter_filter(mimType, pFormatCtx->streams[soakVideo->streamIndex]->codec, nullptr, &data, &packet->size, packet->data, packet->size, 0);
-                    uint8_t *tdata;
-                    tdata = packet->data;
-                    packet->data = data;
-                    if(tdata != nullptr)
-                    {
-                        av_free(tdata);
-                    }
-                }
-                soakVideo->queue->putAvpacket(packet);
-            }
-            else{
-                av_packet_free(&packet);
-                av_free(packet);
-                packet = nullptr;
-            }
-        } else{
-            av_packet_free(&packet);
-            av_free(packet);
-            packet = nullptr;
-            if((soakVideo != nullptr && soakVideo->queue->getAvFrameSize() == 0) || (soakAudio != nullptr && soakAudio->queue->getAvPacketSize() == 0))
-            {
-                soakPlayStatus->exit = true;
-                break;
-            }
-        }
-    }
-    if(mimType != nullptr)
-    {
-        av_bitstream_filter_close(mimType);
-    }
-    if(!exitByUser && soakJavaCall != nullptr)
-    {
-        soakJavaCall->onComplete(SOAK_THREAD_CHILD);
-    }
-    exit = true;
-    return 0;
-}
-
-void SoakFFmpeg::release() {
-    soakPlayStatus->exit = true;
-    pthread_mutex_lock(&init_mutex);
-    LOGE("开始释放 ffmpeg")
-    int sleepCount = 0;
-    while(!exit)
-    {
-        if(sleepCount > 300)//十秒钟还没有退出就自动强制退出
-        {
+    if (callJava != nullptr) {
+        if (playStatus != nullptr && !playStatus->exit) {
+            int num, den;
+            float dar;
+            av_reduce(&num, &den, width * (int64_t) codec_num, height * (int64_t) codec_den,
+                      1080 * 1920);
+            dar = num * 1.0f / den;
+            callJava->onCallVideoSizeChanged(CHILD_THREAD, width, height, dar);
+            callJava->onCallPrepared(CHILD_THREAD);
+            LOGE("width=%d, height=%d, num=%d, den=%d", width, height, num, den)
+        } else {
             exit = true;
         }
-        LOGE("wait ffmpeg  exit %d", sleepCount)
-        sleepCount++;
-        av_usleep(1000 * 10);//暂停10毫秒
-    }
-        LOGE("释放audio....................................")
-    if(soakAudio != nullptr)
-    {
-       LOGE("释放audio....................................2")
-        soakAudio->release();
-        delete(soakAudio);
-        soakAudio = nullptr;
-    }
-
-        LOGE("释放video....................................")
-
-
-    if(soakVideo != nullptr)
-    {
-        LOGE("释放video....................................2")
-        soakVideo->release();
-        delete(soakVideo);
-        soakVideo = nullptr;
-    }
-     LOGE("释放format...................................")
-
-    if(pFormatCtx != nullptr)
-    {
-        avformat_close_input(&pFormatCtx);
-        avformat_free_context(pFormatCtx);
-        pFormatCtx = nullptr;
-    }
-    LOGE("释放javacall.................................")
-    if(soakJavaCall != nullptr)
-    {
-        soakJavaCall = nullptr;
     }
     pthread_mutex_unlock(&init_mutex);
+}
+
+void SoakFFmpeg::start() {
+
+    if (video != nullptr) {
+        supportMediacodec = false;
+        video->audio = audio;
+        const char *codecName = ((const AVCodec *) video->avCodecContext->codec)->name;
+        supportMediacodec = callJava->onCallIsSupportVideo(codecName);
+        if (supportMediacodec) {
+            LOGE("当前设备支持硬解码当前视频");
+            if (strcasecmp(codecName, "h264") == 0) {
+                bsFilter = av_bsf_get_by_name("h264_mp4toannexb");
+            } else if (strcasecmp(codecName, "h265") == 0) {
+                bsFilter = av_bsf_get_by_name("hevc_mp4toannexb");
+            }
+            if (bsFilter == nullptr) {
+                supportMediacodec = false;
+                goto end;
+            }
+            if (av_bsf_alloc(bsFilter, &video->abs_ctx) != 0) {
+                supportMediacodec = false;
+                goto end;
+            }
+            if (avcodec_parameters_copy(video->abs_ctx->par_in, video->codecPar) < 0) {
+                supportMediacodec = false;
+                av_bsf_free(&video->abs_ctx);
+                video->abs_ctx = nullptr;
+                goto end;
+            }
+            if (av_bsf_init(video->abs_ctx) != 0) {
+                supportMediacodec = false;
+                av_bsf_free(&video->abs_ctx);
+                video->abs_ctx = nullptr;
+                goto end;
+            }
+            video->abs_ctx->time_base_in = video->time_base;
+        }
+        end:
+        if (supportMediacodec) {
+            video->codecType = CODEC_MEDIACODEC;
+            video->callJava->onCallInitMediaCodec(
+                    codecName,
+                    video->avCodecContext->width,
+                    video->avCodecContext->height,
+                    video->avCodecContext->extradata_size,
+                    video->avCodecContext->extradata_size,
+                    video->avCodecContext->extradata,
+                    video->avCodecContext->extradata
+            );
+        }
+    }
+    if (audio != nullptr) {
+        audio->play();
+    }
+    if (nullptr != video) {
+        video->play();
+    }
+
+    while (playStatus != nullptr && !playStatus->exit) {
+        if (playStatus->seek) {
+            av_usleep(1000 * 100);
+            continue;
+        }
+
+        if (audio->queue->getQueueSize() > 40) {
+            av_usleep(1000 * 100);
+            continue;
+        }
+        AVPacket *avPacket = av_packet_alloc();
+        if (av_read_frame(pFormatCtx, avPacket) == 0) {
+            if (nullptr != audio || nullptr != video) {
+                if (avPacket->stream_index == audio->streamIndex) {
+                    audio->queue->putAvPacket(avPacket);
+                } else if (avPacket->stream_index == video->streamIndex) {
+                    video->queue->putAvPacket(avPacket);
+                } else {
+                    av_packet_free(&avPacket);
+                    av_free(avPacket);
+                }
+            }
+        } else {
+            av_packet_free(&avPacket);
+            av_free(avPacket);
+            while (playStatus != nullptr && !playStatus->exit) {
+                if (audio != nullptr) {
+                    if (audio->queue->getQueueSize() > 0) {
+                        av_usleep(1000 * 100);
+                        continue;
+                    } else {
+                        if (!playStatus->seek) {
+                            av_usleep(1000 * 100);
+                            playStatus->exit = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
+    if (callJava != nullptr) {
+        callJava->onCallComplete(CHILD_THREAD);
+    }
+    exit = true;
+
 }
 
 void SoakFFmpeg::pause() {
-    if(soakPlayStatus != nullptr)
-    {
-        soakPlayStatus->pause = true;
-        if(soakAudio != nullptr)
-        {
-            soakAudio->pause();
-        }
+
+    if (playStatus != nullptr) {
+        playStatus->pause = true;
+    }
+    if (audio != nullptr) {
+        audio->pause();
     }
 }
 
 void SoakFFmpeg::resume() {
-    if(soakPlayStatus != nullptr)
-    {
-        soakPlayStatus->pause = false;
-        if(soakAudio != nullptr)
-        {
-            soakAudio->resume();
+    if (playStatus != nullptr) {
+        playStatus->pause = false;
+    }
+    if (audio != nullptr) {
+        audio->resume();
+    }
+}
+
+void SoakFFmpeg::release() {
+
+    LOGE("开始释放Ffmpeg")
+    playStatus->exit = true;
+    pthread_join(decodeThread, nullptr);
+    pthread_mutex_lock(&init_mutex);
+    int sleepCount = 0;
+    while (!exit) {
+        if (sleepCount > 300) {
+            exit = true;
         }
+        LOGE("wait ffmpeg  exit %d", sleepCount);
+        sleepCount++;
+        av_usleep(1000 * 10);//暂停10毫秒
     }
+    LOGE("释放 Audio");
+    if (audio != nullptr) {
+        audio->release();
+        delete (audio);
+        audio = nullptr;
+    }
+    LOGE("释放 video");
+    if (video != nullptr) {
+        video->release();
+        delete (video);
+        video = nullptr;
+    }
+    LOGE("释放 封装格式上下文");
+    if (pFormatCtx != nullptr) {
+        avformat_close_input(&pFormatCtx);
+        avformat_free_context(pFormatCtx);
+        pFormatCtx = nullptr;
+    }
+    LOGE("释放 callJava");
+    if (callJava != nullptr) {
+        callJava = nullptr;
+    }
+    LOGE("释放 playStatus");
+    if (playStatus != nullptr) {
+        playStatus = nullptr;
+    }
+    pthread_mutex_unlock(&init_mutex);
 }
 
-int SoakFFmpeg::getMimeType(const char *codecName) {
-
-    if(strcmp(codecName, "h264") == 0)
-    {
-        return 1;
-    }
-    if(strcmp(codecName, "hevc") == 0)
-    {
-        return 2;
-    }
-    if(strcmp(codecName, "mpeg4") == 0)
-    {
-        isavi = true;
-        return 3;
-    }
-    if(strcmp(codecName, "wmv3") == 0)
-    {
-        isavi = true;
-        return 4;
-    }
-
-    return -1;
+SoakFFmpeg::~SoakFFmpeg() {
+    pthread_mutex_destroy(&init_mutex);
+    pthread_mutex_destroy(&seek_mutex);
 }
 
-int SoakFFmpeg::seek(int64_t sec) {
-    if(sec >= duration)
-    {
-        return -1;
+void SoakFFmpeg::seek(int64_t seconds) {
+
+    LOGE("seek time %d", seconds)
+    if (duration <= 0) {
+        return;
     }
-    if(soakPlayStatus->load)
-    {
-        return -1;
-    }
-    if(pFormatCtx != nullptr)
-    {
-        soakPlayStatus->seek = true;
+    if (seconds >= 0 && seconds <= duration) {
+        playStatus->seek = true;
         pthread_mutex_lock(&seek_mutex);
-        int64_t rel = sec * AV_TIME_BASE;
-        int ret = avformat_seek_file(pFormatCtx, -1, INT64_MIN, rel, INT64_MAX, 0);
-        if(soakAudio != nullptr)
-        {
-            soakAudio->queue->clearAvpacket();
-//            av_seek_frame(pFormatCtx, soakAudio->streamIndex, sec * soakAudio->time_base.den, AVSEEK_FLAG_FRAME | AVSEEK_FLAG_BACKWARD);
-            soakAudio->setClock(0);
+        int64_t rel = seconds * AV_TIME_BASE;
+        LOGE("rel time %d", seconds)
+        avformat_seek_file(pFormatCtx, -1, INT64_MIN, rel, INT64_MAX, 0);
+        if (audio != nullptr) {
+            audio->queue->clearAvPacket();
+            audio->clock = 0;
+            audio->last_time = 0;
+            pthread_mutex_lock(&audio->codecMutex);
+            avcodec_flush_buffers(audio->avCodecContext);
+            pthread_mutex_unlock(&audio->codecMutex);
         }
-        if(soakVideo != nullptr)
-        {
-            soakVideo->queue->clearAvFrame();
-            soakVideo->queue->clearAvpacket();
-//            av_seek_frame(pFormatCtx, soakVideo->streamIndex, sec * soakVideo->time_base.den, AVSEEK_FLAG_FRAME | AVSEEK_FLAG_BACKWARD);
-            soakVideo->setClock(0);
+        if (video != nullptr) {
+            video->queue->clearAvPacket();
+            video->clock = 0;
+            pthread_mutex_lock(&video->codecMutex);
+            avcodec_flush_buffers(video->avCodecContext);
+            pthread_mutex_unlock(&video->codecMutex);
         }
-        soakAudio->clock = 0;
-        soakAudio->now_time = 0;
         pthread_mutex_unlock(&seek_mutex);
-        soakPlayStatus->seek = false;
-    }
-    return 0;
-}
-
-void SoakFFmpeg::setAudioChannel(int index) {
-    if(soakAudio != nullptr)
-    {
-        int channelsize = audiochannels.size();
-        if(index < channelsize)
-        {
-            for(int i = 0; i < channelsize; i++)
-            {
-                if(i == index)
-                {
-                    soakAudio->time_base = audiochannels.at(i)->time_base;
-                    soakAudio->streamIndex = audiochannels.at(i)->channelId;
-                }
-            }
-        }
-    }
-
-}
-
-void SoakFFmpeg::setVideoChannel(int id) {
-    if(soakVideo != nullptr)
-    {
-        soakVideo->streamIndex = videochannels.at(id)->channelId;
-        soakVideo->time_base = videochannels.at(id)->time_base;
-        soakVideo->rate = 1000 / videochannels.at(id)->fps;
-        if(videochannels.at(id)->fps >= 60)
-        {
-            soakVideo->frameratebig = true;
-        } else{
-            soakVideo->frameratebig = false;
-        }
-
+        playStatus->seek = false;
     }
 }
 
-int SoakFFmpeg::getAudioChannels() {
-    return audiochannels.size();
-}
+int SoakFFmpeg::getCodecContext(AVCodecParameters *avCodecParameters,
+                                AVCodecContext **avCodecContext) {
+    AVCodec *dec = avcodec_find_decoder(avCodecParameters->codec_id);
+    if (!dec) {
 
-int SoakFFmpeg::getVideoWidth() {
-    if(soakVideo != nullptr && soakVideo->avCodecContext != nullptr)
-    {
-        return soakVideo->avCodecContext->width;
+        LOGE("can not find decoder");
+        callJava->onCallError(CHILD_THREAD, 1003, "can not find decoder");
+        exit = true;
+        pthread_mutex_unlock(&init_mutex);
+        return -1;
     }
-    return 0;
-}
 
-int SoakFFmpeg::getVideoHeight() {
-    if(soakVideo != nullptr && soakVideo->avCodecContext != nullptr)
-    {
-        return soakVideo->avCodecContext->height;
+    *avCodecContext = avcodec_alloc_context3(dec);
+    if (!*avCodecContext) {
+
+        LOGE("can not alloc new decodecctx");
+        callJava->onCallError(CHILD_THREAD, 1004, "can not alloc new decodecctx");
+        exit = true;
+        pthread_mutex_unlock(&init_mutex);
+        return -1;
+    }
+
+    if (avcodec_parameters_to_context(*avCodecContext, avCodecParameters) < 0) {
+        LOGE("can not fill decodecctx");
+        callJava->onCallError(CHILD_THREAD, 1005, "ccan not fill decodecctx");
+        exit = true;
+        pthread_mutex_unlock(&init_mutex);
+        return -1;
+    }
+
+    if (avcodec_open2(*avCodecContext, dec, 0) != 0) {
+
+        LOGE("cant not open audio strames");
+        callJava->onCallError(CHILD_THREAD, 1006, "cant not open audio strames");
+        exit = true;
+        pthread_mutex_unlock(&init_mutex);
+        return -1;
     }
     return 0;
 }

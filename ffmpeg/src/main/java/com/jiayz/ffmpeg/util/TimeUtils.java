@@ -1,15 +1,11 @@
 package com.jiayz.ffmpeg.util;
 
-public class SoakTimeUtil {
+public class TimeUtils {
 
-    public static String secdsToDateFormat(int sends) {
-        if(sends <= 0)
-        {
-            return "00:00:00";
-        }
-        long hours = sends / (60 * 60);
-        long minutes = (sends % (60 * 60)) / (60);
-        long seconds = sends % (60);
+    public static String secdsToDateFormat(int secds, int totalsecds) {
+        long hours = secds / (60 * 60);
+        long minutes = (secds % (60 * 60)) / (60);
+        long seconds = secds % (60);
 
         String sh = "00";
         if (hours > 0) {
@@ -36,8 +32,11 @@ public class SoakTimeUtil {
                 ss = seconds + "";
             }
         }
-        return sh + ":" + sm + ":" + ss;
+        if(totalsecds >= 3600)
+        {
+            return sh + ":" + sm + ":" + ss;
+        }
+        return sm + ":" + ss;
+
     }
-
-
 }

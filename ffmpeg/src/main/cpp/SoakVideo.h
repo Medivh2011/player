@@ -1,53 +1,54 @@
 
-#ifndef SOAKPLAYER_SOAKVIDEO_H
-#define SOAKPLAYER_SOAKVIDEO_H
+#ifndef CUSTOM_VIDEO_H
+#define CUSTOM_VIDEO_H
 
-#include "SoakBasePlayer.h"
+
 #include "SoakQueue.h"
-#include "SoakJavaCall.h"
-#include "AndroidLog.h"
+#include "SoakCallJava.h"
 #include "SoakAudio.h"
+
+#define CODEC_YUV 0
+#define CODEC_MEDIACODEC 1
 
 extern "C"
 {
-    #include <libavutil/time.h>
+#include <libswscale/swscale.h>
+#include <libavutil/imgutils.h>
+#include <libavutil/time.h>
+#include <libavcodec/avcodec.h>
 };
 
-class SoakVideo : public SoakBasePlayer{
+class SoakVideo {
 
 public:
-    SoakQueue *queue = NULL;
-    SoakAudio *soakAudio = NULL;
-    SoakPlayStatus *soakPlayStatus = NULL;
-    pthread_t videoThread;
-    pthread_t decFrame;
-    SoakJavaCall *soakJavaCall = NULL;
-
+    int streamIndex = -1;
+    AVCodecContext *avCodecContext = nullptr;
+    AVCodecParameters *codecPar = nullptr;
+    SoakQueue *queue = nullptr;
+    SoakPlaystatus *playStatus = nullptr;
+    SoakCallJava *callJava = nullptr;
+    AVRational time_base;
+    pthread_t thread_play;
+    SoakAudio *audio = nullptr;
+    double clock = 0;
     double delayTime = 0;
     double defaultDelayTime = 0.04;
-    int rate = 0;
-    bool isExit = true;
-    bool isExit2 = true;
-    int codecType = -1;
-    double video_clock = 0;
-    double framePts = 0;
-    bool frameratebig = false;
-    int playcount = -1;
-
+    pthread_mutex_t codecMutex;
+    int codecType = CODEC_YUV;
+    AVBSFContext *abs_ctx = nullptr;
 public:
-    SoakVideo(SoakJavaCall *javaCall, SoakAudio *audio, SoakPlayStatus *playStatus);
+    SoakVideo(SoakPlaystatus *playStatus, SoakCallJava *callJava);
     ~SoakVideo();
 
-    void playVideo(int codecType);
-    void decodeVideo();
+    void play();
+
     void release();
-    double synchronize(AVFrame *srcFrame, double pts);
+
+    double getFrameDiffTime(AVFrame *avFrame, AVPacket *avPacket);
 
     double getDelayTime(double diff);
 
-    void setClock(int secds);
-
 };
 
 
-#endif //SOAKPLAYER_SOAKVIDEO_H
+#endif

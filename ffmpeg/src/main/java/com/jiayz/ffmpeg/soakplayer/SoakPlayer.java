@@ -1,30 +1,20 @@
 package com.jiayz.ffmpeg.soakplayer;
 
-
-import android.graphics.Bitmap;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.Surface;
 
 
-import com.jiayz.ffmpeg.listener.SoakOnVideoSizeChangedListener;
-import com.jiayz.ffmpeg.listener.SoakOnCompleteListener;
-import com.jiayz.ffmpeg.listener.SoakOnCutVideoImgListener;
-import com.jiayz.ffmpeg.listener.SoakOnErrorListener;
-import com.jiayz.ffmpeg.listener.SoakOnGlSurfaceViewOnCreateListener;
-import com.jiayz.ffmpeg.listener.SoakOnInfoListener;
-import com.jiayz.ffmpeg.listener.SoakOnLoadListener;
-import com.jiayz.ffmpeg.listener.SoakOnPreparedListener;
-import com.jiayz.ffmpeg.listener.SoakOnStopListener;
-import com.jiayz.ffmpeg.listener.SoakStatus;
-import com.jiayz.ffmpeg.opengles.SoakGlSurfaceView;
-import com.jiayz.ffmpeg.util.SoakLog;
+import com.jiayz.ffmpeg.model.SoakTimeInfo;
+import com.jiayz.ffmpeg.opengles.SoakGLSurfaceView;
+import com.jiayz.ffmpeg.opengles.SoakRender;
+import com.jiayz.ffmpeg.util.LogUtils;
+import com.jiayz.ffmpeg.util.VideoSupportUtils;
 
 import java.nio.ByteBuffer;
-
-
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class SoakPlayer {
 
@@ -32,510 +22,332 @@ public class SoakPlayer {
         System.loadLibrary("soak_player");
     }
 
-    /**
-     * 播放文件路径
-     */
-    private String dataSource;
-    /**
-     * 硬解码mime
-     */
-    private MediaFormat mediaFormat;
-    /**
-     * 视频硬解码器
-     */
-    private MediaCodec mediaCodec;
-    /**
-     * 渲染surface
-     */
-    private Surface surface;
-    /**
-     * opengl surfaceview
-     */
-    private SoakGlSurfaceView glSurfaceView;
-    /**
-     * 视频解码器info
-     */
-    private MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+    private native void _prepare(String url);
+    private native void _start();
+    private native void _pause();
+    private native void _resume();
+    private native void _stop();
+    private native void _seek(int position);
 
-    /**
-     * 准备好时的回调
-     */
-    private SoakOnPreparedListener soakOnPreparedListener;
-    /**
-     * 错误时的回调
-     */
-    private SoakOnErrorListener soakOnErrorListener;
-    /**
-     * 加载回调
-     */
-    private SoakOnLoadListener onLoadListener;
-    /**
-     * 更新时间回调
-     */
-    private SoakOnInfoListener onInfoListener;
-    /**
-     * 播放完成回调
-     */
-    private SoakOnCompleteListener onCompleteListener;
-    /**
-     * 视频截图回调
-     */
-    private SoakOnCutVideoImgListener onCutVideoImgListener;
-    /**
-     * 停止完成回调
-     */
-    private SoakOnStopListener onStopListener;
+    private String mUrl;
+    private OnPreparedListener mOnPreparedListener;
+    private OnVideoSizeChanged mOnVideoSizeChangedListener;
+    private OnLoadListener mOnLoadListener;
+    private OnPauseResumeListener mOnPauseResumeListener;
+    private OnTimeUpdateListener mOnTimeUpdateListener;
+    private OnErrorListener mOnErrorListener;
+    private OnCompleteListener mOnCompleteListener;
 
+    private SoakGLSurfaceView mSurfaceView;
+    private Surface mSurface;
+    private int mDuration = 0;
+    private static boolean playNext = false;
+    private SoakTimeInfo mTimeInfo;
+    private MediaCodec mCodec;
+    private MediaFormat mFormat;
+    private MediaCodec.BufferInfo mBufferInfo;
 
-    private SoakOnVideoSizeChangedListener videoSizeChangedListener;
-    /**
-     * 是否已经准备好
-     */
-    private boolean parpared = false;
-    /**
-     * 时长实体类
-     */
-    private SoakTimeBean soakTimeBean;
-    /**
-     * 上一次播放时间
-     */
-    private int lastCurrTime = 0;
+    private ExecutorService service = Executors.newSingleThreadExecutor();
 
-    /**
-     * 是否只有音频（只播放音频流）
-     */
-    private boolean isOnlyMusic = false;
+    public SoakPlayer() {}
 
-    private boolean isOnlySoft = false;
-
-    public SoakPlayer()
-    {
-        soakTimeBean = new SoakTimeBean();
+    public void setDataSource(String url) {
+        this.mUrl = url;
     }
 
-    public void setDataSource(String dataSource) {
-        this.dataSource = dataSource;
-    }
-
-    public void setOnlyMusic(boolean onlyMusic) {
-        isOnlyMusic = onlyMusic;
-    }
-
-    private void setSurface(Surface surface) {
-        this.surface = surface;
-    }
-
-    public void setGlSurfaceView(SoakGlSurfaceView soakGlSurfaceView) {
-        this.glSurfaceView = soakGlSurfaceView;
-        soakGlSurfaceView.setOnGlSurfaceViewOncreateListener(new SoakOnGlSurfaceViewOnCreateListener() {
+    public void setGLSurfaceView(SoakGLSurfaceView surfaceView) {
+        this.mSurfaceView = surfaceView;
+        mSurfaceView.getRender().setOnSurfaceCreateListener(new SoakRender.OnSurfaceCreateListener() {
             @Override
-            public void onGlSurfaceViewOnCreate(Surface s) {
-                if(surface == null)
-                {
-                    setSurface(s);
-                }
-                if(parpared && !TextUtils.isDigitsOnly(dataSource))
-                {
-                    nativePrepared(dataSource, isOnlyMusic);
-                }
-            }
-
-            @Override
-            public void onCutVideoImg(Bitmap bitmap) {
-                if(onCutVideoImgListener != null)
-                {
-                    onCutVideoImgListener.onCutVideoImg(bitmap);
+            public void onSurfaceCreate(Surface s) {
+                if(mSurface == null) {
+                    mSurface = s;
+                    LogUtils.d("onSurfaceCreate");
                 }
             }
         });
     }
 
+    public void setOnPreparedListener(OnPreparedListener listener) {
+        this.mOnPreparedListener = listener;
+    }
 
-    /**
-     * 准备
-     * @param url
-     */
-    private native void nativePrepared(String url, boolean isOnlyMusic);
+    public void setOnVideoSizeChangedListener(OnVideoSizeChanged listener) {
+        this.mOnVideoSizeChangedListener = listener;
+    }
 
-    /**
-     * 开始
-     */
-    private native void nativeStart();
+    public void setOnLoadListener(OnLoadListener listener) {
+        this.mOnLoadListener = listener;
+    }
 
-    /**
-     * 停止并释放资源
-     */
-    private native void nativeStop(boolean exit);
+    public void setOnPauseResumeListener(OnPauseResumeListener listener) {
+        this.mOnPauseResumeListener = listener;
+    }
 
-    /**
-     * 暂停
-     */
-    private native void nativePause();
+    public void setOnTimeUpdateListener(OnTimeUpdateListener listener) {
+        this.mOnTimeUpdateListener = listener;
+    }
 
-    /**
-     * 播放 对应暂停
-     */
-    private native void nativeResume();
+    public void setOnErrorListener(OnErrorListener listener) {
+        this.mOnErrorListener = listener;
+    }
 
-    /**
-     * seek
-     * @param secds
-     */
-    private native void nativeSeek(int secds);
+    public void setOnCompleteListener(OnCompleteListener listener) {
+        this.mOnCompleteListener = listener;
+    }
 
-    /**
-     * 设置音轨 根据获取的音轨数 排序
-     * @param index
-     */
-    private native void nativeSetAudioChannels(int index);
 
-    /**
-     * 获取总时长
-     * @return
-     */
-    private native int nativeGetDuration();
-
-    /**
-     * 获取音轨数
-     * @return
-     */
-    private native int nativeGetAudioChannels();
-
-    /**
-     * 获取视频宽度
-     * @return
-     */
-    private native int nativeGetVideoWidth();
-
-    /**
-     * 获取视频长度
-     * @return
-     */
-    private native int nativeGetVideoHeight();
-
-    public int getDuration()
+    public void prepare()
     {
-        return nativeGetDuration();
-    }
-
-    public int getAudioChannels()
-    {
-        return nativeGetAudioChannels();
-    }
-
-    public int getVideoWidth()
-    {
-        return nativeGetVideoWidth();
-    }
-
-    public int getVideoHeight()
-    {
-        return nativeGetVideoHeight();
-    }
-
-    public void setAudioChannels(int index)
-    {
-        nativeSetAudioChannels(index);
-    }
-
-
-
-    public void setOnPreparedListener(SoakOnPreparedListener soakOnPreparedListener) {
-        this.soakOnPreparedListener = soakOnPreparedListener;
-    }
-
-
-    public void setVideoSizeChangedListener(SoakOnVideoSizeChangedListener videoSizeChangedListener) {
-        this.videoSizeChangedListener = videoSizeChangedListener;
-    }
-
-    public void setOnErrorListener(SoakOnErrorListener soakOnErrorListener) {
-        this.soakOnErrorListener = soakOnErrorListener;
-    }
-
-    public void prepared()
-    {
-        if(TextUtils.isEmpty(dataSource))
+        if(TextUtils.isEmpty(mUrl))
         {
-            onError(SoakStatus.STATUS_DATASOURCE_NULL, "datasource is null");
+            LogUtils.d("source not be empty");
             return;
         }
-        parpared = true;
-        if(isOnlyMusic)
-        {
-            nativePrepared(dataSource, isOnlyMusic);
-        }
-        else
-        {
-            if(surface != null)
-            {
-                nativePrepared(dataSource, isOnlyMusic);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                _prepare(mUrl);
             }
-        }
+        }).start();
+
     }
 
     public void start()
     {
-        new Thread(() -> {
-            if(TextUtils.isEmpty(dataSource))
-            {
-                onError(SoakStatus.STATUS_DATASOURCE_NULL, "datasource is null");
-                return;
+        if(TextUtils.isEmpty(mUrl))
+        {
+            LogUtils.d("source is empty");
+            return;
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                _start();
             }
-            if(!isOnlyMusic)
-            {
-                if(surface == null)
-                {
-                    onError(SoakStatus.STATUS_SURFACE_NULL, "surface is null");
-                    return;
-                }
-            }
-
-            if(soakTimeBean == null)
-            {
-                soakTimeBean = new SoakTimeBean();
-            }
-            nativeStart();
         }).start();
-    }
-
-    public void stop(final boolean exit)
-    {
-       // new Thread(() -> {
-            nativeStop(exit);
-            if(mediaCodec != null)
-            {
-                try
-                {
-                    mediaCodec.flush();
-                    mediaCodec.stop();
-                    mediaCodec.release();
-                }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                }
-                mediaCodec = null;
-                mediaFormat = null;
-            }
-            if(glSurfaceView != null)
-            {
-                glSurfaceView.setCodecType(-1);
-                glSurfaceView.requestRender();
-            }
-
-       // }).start();
     }
 
     public void pause()
     {
-        nativePause();
-
+        _pause();
+        if(mOnPauseResumeListener != null)
+        {
+            mOnPauseResumeListener.onPause(true);
+        }
     }
 
     public void resume()
     {
-        nativeResume();
-    }
-
-    public void seek(final int secds)
-    {
-      //  new Thread(() -> {
-            nativeSeek(secds);
-            lastCurrTime = secds;
-      //  }).start();
-    }
-
-    public void setOnlySoft(boolean soft)
-    {
-        this.isOnlySoft = soft;
-    }
-
-    public boolean isOnlySoft()
-    {
-        return isOnlySoft;
-    }
-
-
-
-    private void onLoad(boolean load)
-    {
-        if(onLoadListener != null)
+        _resume();
+        if(mOnPauseResumeListener != null)
         {
-            onLoadListener.onLoad(load);
+            mOnPauseResumeListener.onPause(false);
         }
     }
 
-    private void onError(int code, String msg)
+    public void stop()
     {
-        if(soakOnErrorListener != null)
-        {
-            soakOnErrorListener.onError(code, msg);
-        }
-        stop(true);
-    }
-
-    private void onParpared()
-    {
-        if(soakOnPreparedListener != null)
-        {
-            soakOnPreparedListener.onPrepared();
-        }
-    }
-
-    public void mediacodecInit(int mimetype, int width, int height, byte[] csd0, byte[] csd1)
-    {
-        if(surface != null)
-        {
-            try {
-                glSurfaceView.setCodecType(1);
-                String mtype = getMimeType(mimetype);
-                mediaFormat = MediaFormat.createVideoFormat(mtype, width, height);
-                mediaFormat.setInteger(MediaFormat.KEY_WIDTH, width);
-                mediaFormat.setInteger(MediaFormat.KEY_HEIGHT, height);
-                mediaFormat.setLong(MediaFormat.KEY_MAX_INPUT_SIZE, width * height);
-                mediaFormat.setByteBuffer("csd-0", ByteBuffer.wrap(csd0));
-                mediaFormat.setByteBuffer("csd-1", ByteBuffer.wrap(csd1));
-                mediaCodec = MediaCodec.createDecoderByType(mtype);
-                if(surface != null)
-                {
-                    mediaCodec.configure(mediaFormat, surface, null, 0);
-                    mediaCodec.start();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+        mTimeInfo = null;
+        mDuration = 0;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                _stop();
+                releaseMediaCodec();
             }
-        }
-        else
-        {
-            if(soakOnErrorListener != null)
-            {
-                soakOnErrorListener.onError(SoakStatus.STATUS_SURFACE_NULL, "surface is null");
-            }
-        }
+        }).start();
     }
 
-    public void mediacodecDecode(byte[] bytes, int size, int pts)
+    public void seek(int seconds)
     {
-        if(bytes != null && mediaCodec != null && info != null)
+        _seek(seconds);
+    }
+
+    public void playNext(String url)
+    {
+        mUrl = url;
+        playNext = true;
+        stop();
+    }
+
+    public int getDuration() {
+        return mDuration;
+    }
+
+    private void releaseMediaCodec()
+    {
+        if(mCodec != null)
         {
             try
             {
-                int inputBufferIndex = mediaCodec.dequeueInputBuffer(10);
-                if(inputBufferIndex >= 0)
-                {
-                    ByteBuffer byteBuffer = mediaCodec.getInputBuffers()[inputBufferIndex];
-                    byteBuffer.clear();
-                    byteBuffer.put(bytes);
-                    mediaCodec.queueInputBuffer(inputBufferIndex, 0, size, pts, 0);
-                }
-                int index = mediaCodec.dequeueOutputBuffer(info, 10);
-                while (index >= 0) {
-                    mediaCodec.releaseOutputBuffer(index, true);
-                    index = mediaCodec.dequeueOutputBuffer(info, 10);
-                }
-            }catch (Exception e)
+                mCodec.flush();
+                mCodec.stop();
+                mCodec.release();
+            }
+            catch(Exception e)
             {
+                //e.printStackTrace();
+            }
+            mCodec = null;
+            mFormat = null;
+            mBufferInfo = null;
+        }
+
+    }
+
+
+    public interface OnCompleteListener {
+        void onComplete();
+    }
+
+    public interface OnErrorListener {
+        void onError(int err, String msg);
+    }
+
+    public interface OnLoadListener {
+        void onLoad(boolean isLoad);
+    }
+
+    public interface OnPreparedListener {
+        void onPrepared();
+    }
+
+    public interface OnPauseResumeListener {
+        void onPause(boolean pause);
+    }
+
+    public interface OnTimeUpdateListener {
+        void onTimeUpdate(SoakTimeInfo info);
+    }
+
+    public interface OnVideoSizeChanged {
+        void onVideoSizeChanged(int width, int height, float dar);
+    }
+
+    //CalledByNative
+    public void onCallPrepared() {
+        if(mOnPreparedListener != null) {
+            mOnPreparedListener.onPrepared();
+        }
+    }
+
+    //CalledByNative
+    public void onCallLoad(boolean load) {
+        if(mOnLoadListener != null) {
+            mOnLoadListener.onLoad(load);
+        }
+    }
+
+    //CalledByNative
+    public void onCallTimeInfo(int currentTime, int totalTime) {
+        if(mOnTimeUpdateListener != null) {
+            if(mTimeInfo == null) {
+                mTimeInfo = new SoakTimeInfo();
+            }
+            mDuration = totalTime;
+            mTimeInfo.setCurrentTime(currentTime);
+            mTimeInfo.setTotalTime(totalTime);
+            mOnTimeUpdateListener.onTimeUpdate(mTimeInfo);
+        }
+    }
+
+    //CalledByNative
+    public void onCallError(int code, String msg) {
+        if(mOnErrorListener != null) {
+            stop();
+            mOnErrorListener.onError(code, msg);
+        }
+    }
+
+    //CalledByNative
+    public void onCallComplete() {
+        if(mOnCompleteListener != null) {
+            stop();
+            mOnCompleteListener.onComplete();
+        }
+    }
+
+    //CalledByNative
+    public void onCallNext() {
+        if(playNext) {
+            playNext = false;
+            prepare();
+        }
+    }
+
+    //CalledByNative
+    public void onCallRenderYUV(int width, int height, byte[] y, byte[] u, byte[] v) {
+        LogUtils.d("获取到视频的yuv数据");
+        if(mSurfaceView != null)
+        {
+            mSurfaceView.getRender().setRenderType(SoakRender.RENDER_YUV);
+            mSurfaceView.setYUVData(width, height, y, u, v);
+        }
+    }
+
+    //CalledByNative
+    public boolean onCallIsSupportMediaCodec(String ffCodecName) {
+        return VideoSupportUtils.isSupportCodec(ffCodecName);
+    }
+
+    //CalledByNative
+    public void initMediaCodec(String codecName, int width, int height, byte[] csd_0, byte[] csd_1) {
+        if(mSurface != null) {
+            try {
+                mSurfaceView.getRender().setRenderType(SoakRender.RENDER_MEDIACODEC);
+                String mime = VideoSupportUtils.findVideoCodecName(codecName);
+                mFormat = MediaFormat.createVideoFormat(mime, width, height);
+                mFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height);
+                mFormat.setByteBuffer("csd-0", ByteBuffer.wrap(csd_0));
+                mFormat.setByteBuffer("csd-1", ByteBuffer.wrap(csd_1));
+                LogUtils.d(mFormat.toString());
+                mCodec = MediaCodec.createDecoderByType(mime);
+                mBufferInfo = new MediaCodec.BufferInfo();
+                mCodec.configure(mFormat, mSurface, null, 0);
+                mCodec.start();
+
+            }
+            catch (Exception e) {
                 e.printStackTrace();
             }
         }
-    }
-
-    public void setOnLoadListener(SoakOnLoadListener onLoadListener) {
-        this.onLoadListener = onLoadListener;
-    }
-
-    private String getMimeType(int type)
-    {
-        if(type == 1)
-        {
-            return "video/avc";
-        }
-        else if(type == 2)
-        {
-            return "video/hevc";
-        }
-        else if(type == 3)
-        {
-            return "video/mp4v-es";
-        }
-        else if(type == 4)
-        {
-            return "video/x-ms-wmv";
-        }
-        return "";
-    }
-
-    public void setFrameData(int w, int h, byte[] y, byte[] u, byte[] v)
-    {
-        if(glSurfaceView != null)
-        {
-            SoakLog.d("setFrameData");
-            glSurfaceView.setCodecType(0);
-            glSurfaceView.setFrameData(w, h, y, u, v);
-        }
-    }
-
-    public void setOnInfoListener(SoakOnInfoListener onInfoListener) {
-        this.onInfoListener = onInfoListener;
-    }
-
-    public void setVideoInfo(int currentSeconds, int totalSeconds)
-    {
-        if(onInfoListener != null && soakTimeBean != null)
-        {
-            if(currentSeconds < lastCurrTime)
+        else {
+            if(mOnErrorListener != null)
             {
-                currentSeconds = lastCurrTime;
+                mOnErrorListener.onError(2001, "surface is null");
             }
-            soakTimeBean.setCurrentSeconds(currentSeconds);
-            soakTimeBean.setTotalSeconds(totalSeconds);
-            onInfoListener.onInfo(soakTimeBean);
-            lastCurrTime = currentSeconds;
         }
     }
 
-    public void setOnCompleteListener(SoakOnCompleteListener onCompleteListener) {
-        this.onCompleteListener = onCompleteListener;
-    }
+    //CalledByNative
+    public void decodeAVPacket(int datasize, byte[] data) {
+        if(mSurface != null && datasize > 0 && data != null && mCodec != null) {
+            try {
+                int intputBufferIndex = mCodec.dequeueInputBuffer(10);
+                if(intputBufferIndex >= 0) {
+                    ByteBuffer byteBuffer = mCodec.getInputBuffers()[intputBufferIndex];
+                    byteBuffer.clear();
+                    byteBuffer.put(data);
+                    mCodec.queueInputBuffer(intputBufferIndex, 0, datasize, 0, 0);
+                }
+                int outputBufferIndex = mCodec.dequeueOutputBuffer(mBufferInfo, 10);
+                while(outputBufferIndex >= 0) {
+                    mCodec.releaseOutputBuffer(outputBufferIndex, true);
+                    outputBufferIndex = mCodec.dequeueOutputBuffer(mBufferInfo, 10);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
 
-    public void videoComplete()
-    {
-        if(onCompleteListener != null)
-        {
-            setVideoInfo(nativeGetDuration(), nativeGetDuration());
-            soakTimeBean = null;
-            onCompleteListener.onComplete();
         }
     }
 
-    public void setOnCutVideoImgListener(SoakOnCutVideoImgListener onCutVideoImgListener) {
-        this.onCutVideoImgListener = onCutVideoImgListener;
+    //CalledByNative
+    public void onCallVideoSizeChanged(int width, int height, float dar) {
+        LogUtils.d("onCallVideoSizeChanged="+width+", height="+height + ", dar="+dar);
+        mOnVideoSizeChangedListener.onVideoSizeChanged(width, height, dar);
     }
 
-    public void cutVideoImg()
-    {
-        if(glSurfaceView != null)
-        {
-            glSurfaceView.cutVideoImg();
-        }
-    }
-
-    public void setOnStopListener(SoakOnStopListener onStopListener) {
-        this.onStopListener = onStopListener;
-    }
-
-    public void onStopComplete()
-    {
-        if(onStopListener != null)
-        {
-            onStopListener.onStop();
-        }
-    }
-
-    public void onVideoSizeChanged(int width,int height,float dar){
-        if (videoSizeChangedListener != null ){
-            videoSizeChangedListener.onVideoSizeChanged(width, height, dar);
-        }
-    }
 }

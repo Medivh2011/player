@@ -1,377 +1,309 @@
+
 #include "SoakVideo.h"
 
-SoakVideo::SoakVideo(SoakJavaCall *javaCall, SoakAudio *audio, SoakPlayStatus *playStatus) {
-    streamIndex = -1;
-    clock = 0;
-    soakJavaCall = javaCall;
-    soakAudio = audio;
+SoakVideo::SoakVideo(SoakPlaystatus *playStatus, SoakCallJava *callJava) {
+
+    this->playStatus = playStatus;
+    this->callJava = callJava;
     queue = new SoakQueue(playStatus);
-    soakPlayStatus = playStatus;
+    pthread_mutex_init(&codecMutex, nullptr);
+}
+
+void *playVideo(void *data)
+{
+    auto *video = static_cast<SoakVideo *>(data);
+    while(video->playStatus != nullptr && !video->playStatus->exit)
+    {
+        if(video->playStatus->seek)
+        {
+            av_usleep(1000 * 100);
+            continue;
+        }
+        if(video->playStatus->pause)
+        {
+            av_usleep(1000 * 100);
+            continue;
+        }
+        if(video->queue->getQueueSize() == 0)
+        {
+            if(!video->playStatus->load)
+            {
+                video->playStatus->load = true;
+                video->callJava->onCallLoad(CHILD_THREAD, true);
+            }
+            av_usleep(1000 * 100);
+            continue;
+        } else{
+            if(video->playStatus->load)
+            {
+                video->playStatus->load = false;
+                video->callJava->onCallLoad(CHILD_THREAD, false);
+            }
+        }
+        AVPacket *avPacket = av_packet_alloc();
+        if(video->queue->getAvPacket(avPacket) != 0)
+        {
+            av_packet_free(&avPacket);
+            av_free(avPacket);
+            avPacket = nullptr;
+            continue;
+        }
+        if(video->codecType == CODEC_MEDIACODEC)
+        {
+            if(av_bsf_send_packet(video->abs_ctx, avPacket) != 0)
+            {
+                av_packet_free(&avPacket);
+                av_free(avPacket);
+                avPacket = nullptr;
+                continue;
+            }
+            while(av_bsf_receive_packet(video->abs_ctx, avPacket) == 0)
+            {
+                LOGE("开始解码");
+
+                double diff = video->getFrameDiffTime(nullptr, avPacket);
+                LOGE("diff is %f", diff);
+
+                av_usleep(video->getDelayTime(diff) * 1000000);
+                video->callJava->onCallDecodeAVPacket(avPacket->size, avPacket->data);
+
+                av_packet_free(&avPacket);
+                av_free(avPacket);
+                continue;
+            }
+            avPacket = nullptr;
+        }
+        else if(video->codecType == CODEC_YUV)
+        {
+            pthread_mutex_lock(&video->codecMutex);
+            if(avcodec_send_packet(video->avCodecContext, avPacket) != 0)
+            {
+                av_packet_free(&avPacket);
+                av_free(avPacket);
+                avPacket = nullptr;
+                pthread_mutex_unlock(&video->codecMutex);
+                continue;
+            }
+            AVFrame *avFrame = av_frame_alloc();
+            if(avcodec_receive_frame(video->avCodecContext, avFrame) != 0)
+            {
+                av_frame_free(&avFrame);
+                av_free(avFrame);
+                avFrame = nullptr;
+                av_packet_free(&avPacket);
+                av_free(avPacket);
+                avPacket = nullptr;
+                pthread_mutex_unlock(&video->codecMutex);
+                continue;
+            }
+            LOGE("子线程解码一个AVframe成功");
+            if(avFrame->format == AV_PIX_FMT_YUV420P)
+            {
+                LOGE("当前视频是YUV420P格式");
+
+                double diff = video->getFrameDiffTime(avFrame, nullptr);
+                LOGE("diff is %f", diff);
+
+                av_usleep(video->getDelayTime(diff) * 1000000);
+                video->callJava->onCallRenderYUV(
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        avFrame->data[0],
+                        avFrame->data[1],
+                        avFrame->data[2]);
+            } else{
+                LOGE("当前视频不是YUV420P格式");
+                AVFrame *pFrameYUV420P = av_frame_alloc();
+                int num = av_image_get_buffer_size(
+                        AV_PIX_FMT_YUV420P,
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        1);
+                uint8_t *buffer = static_cast<uint8_t *>(av_malloc(num * sizeof(uint8_t)));
+                av_image_fill_arrays(
+                        pFrameYUV420P->data,
+                        pFrameYUV420P->linesize,
+                        buffer,
+                        AV_PIX_FMT_YUV420P,
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        1);
+                SwsContext *sws_ctx = sws_getContext(
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        video->avCodecContext->pix_fmt,
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        AV_PIX_FMT_YUV420P,
+                        SWS_BICUBIC, nullptr, nullptr, nullptr);
+
+                if(!sws_ctx)
+                {
+                    av_frame_free(&pFrameYUV420P);
+                    av_free(pFrameYUV420P);
+                    av_free(buffer);
+                    pthread_mutex_unlock(&video->codecMutex);
+                    continue;
+                }
+                sws_scale(
+                        sws_ctx,
+                        reinterpret_cast<const uint8_t *const *>(avFrame->data),
+                        avFrame->linesize,
+                        0,
+                        avFrame->height,
+                        pFrameYUV420P->data,
+                        pFrameYUV420P->linesize);
+                //渲染
+
+                double diff = video->getFrameDiffTime(avFrame, nullptr);
+                LOGE("diff is %f", diff);
+
+                av_usleep(video->getDelayTime(diff) * 1000000);
+
+                video->callJava->onCallRenderYUV(
+                        video->avCodecContext->width,
+                        video->avCodecContext->height,
+                        pFrameYUV420P->data[0],
+                        pFrameYUV420P->data[1],
+                        pFrameYUV420P->data[2]);
+
+                av_frame_free(&pFrameYUV420P);
+                av_free(pFrameYUV420P);
+                av_free(buffer);
+                sws_freeContext(sws_ctx);
+            }
+            av_frame_free(&avFrame);
+            av_free(avFrame);
+            avFrame = nullptr;
+            av_packet_free(&avPacket);
+            av_free(avPacket);
+            avPacket = nullptr;
+            pthread_mutex_unlock(&video->codecMutex);
+        }
+
+    }
+    return nullptr;
+}
+
+void SoakVideo::play() {
+
+    if(playStatus != nullptr && !playStatus->exit)
+    {
+        pthread_create(&thread_play, nullptr, playVideo, this);
+    }
 }
 
 void SoakVideo::release() {
-     LOGE("开始释放audio ...")
-    if(soakPlayStatus != nullptr)
-    {
-        soakPlayStatus->exit = true;
-    }
+
     if(queue != nullptr)
     {
-        queue->noticeThread();
+        queue->noticeQueue();
     }
-    int count = 0;
-    while(!isExit || !isExit2)
-    {
-        LOGE("等待渲染线程结束...%d", count)
-        if(count > 1000)
-        {
-            isExit = true;
-            isExit2 = true;
-        }
-        count++;
-        av_usleep(1000 * 10);
-    }
+    pthread_join(thread_play, nullptr);
+
     if(queue != nullptr)
     {
-        queue->release();
         delete(queue);
         queue = nullptr;
     }
-    if(soakJavaCall != nullptr)
+    if(abs_ctx != nullptr)
     {
-        soakJavaCall = nullptr;
-    }
-    if(soakAudio != nullptr)
-    {
-        soakAudio = nullptr;
+        av_bsf_free(&abs_ctx);
+        abs_ctx = nullptr;
     }
     if(avCodecContext != nullptr)
     {
+        pthread_mutex_lock(&codecMutex);
         avcodec_close(avCodecContext);
         avcodec_free_context(&avCodecContext);
         avCodecContext = nullptr;
+        pthread_mutex_unlock(&codecMutex);
     }
-    if(soakPlayStatus != nullptr)
+
+    if(playStatus != nullptr)
     {
-        soakPlayStatus = nullptr;
+        playStatus = nullptr;
     }
-}
-
-void *decodeVideoT(void *data)
-{
-    auto *video = (SoakVideo *) data;
-    video->decodeVideo();
-    pthread_exit(&video->videoThread);
-
-}
-
-void *codecFrame(void *data)
-{
-    auto *pVideo = (SoakVideo *) data;
-
-    while(!pVideo->soakPlayStatus->exit)
+    if(callJava != nullptr)
     {
-        if(pVideo->soakPlayStatus->seek)
-        {
-            continue;
-        }
-        pVideo->isExit2 = false;
-        if(pVideo->queue->getAvFrameSize() > 20)
-        {
-            continue;
-        }
-        if(pVideo->codecType == 1)
-        {
-            if(pVideo->queue->getAvPacketSize() == 0)//加载
-            {
-                if(!pVideo->soakPlayStatus->load)
-                {
-                    pVideo->soakJavaCall->onLoad(SOAK_THREAD_CHILD, true);
-                    pVideo->soakPlayStatus->load = true;
-                }
-                continue;
-            } else{
-                if(pVideo->soakPlayStatus->load)
-                {
-                    pVideo->soakJavaCall->onLoad(SOAK_THREAD_CHILD, false);
-                    pVideo->soakPlayStatus->load = false;
-                }
-            }
-        }
-        AVPacket *packet = av_packet_alloc();
-        if(pVideo->queue->getAvpacket(packet) != 0)
-        {
-            av_packet_free(&packet);
-            av_free(packet);
-            packet = nullptr;
-            continue;
-        }
-
-        int ret = avcodec_send_packet(pVideo->avCodecContext, packet);
-        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            av_packet_free(&packet);
-            av_free(packet);
-            packet = nullptr;
-            continue;
-        }
-        AVFrame *frame = av_frame_alloc();
-        ret = avcodec_receive_frame(pVideo->avCodecContext, frame);
-        if (ret < 0 && ret != AVERROR_EOF) {
-            av_frame_free(&frame);
-            av_free(frame);
-            frame = nullptr;
-            av_packet_free(&packet);
-            av_free(packet);
-            packet = nullptr;
-            continue;
-        }
-        pVideo->queue->putAvframe(frame);
-        av_packet_free(&packet);
-        av_free(packet);
-        packet = nullptr;
+        callJava = nullptr;
     }
-    pVideo->isExit2 = true;
-    pthread_exit(&pVideo->decFrame);
-}
-
-
-void SoakVideo::playVideo(int type) {
-    codecType = type;
-    if(codecType == 0)
-    {
-        pthread_create(&decFrame, nullptr, codecFrame, this);
-    }
-    pthread_create(&videoThread, nullptr, decodeVideoT, this);
-
-}
-
-void SoakVideo::decodeVideo() {
-    while(!soakPlayStatus->exit)
-    {
-        isExit = false;
-        if(soakPlayStatus->pause)//暂停
-        {
-            continue;
-        }
-        if(soakPlayStatus->seek)
-        {
-            soakJavaCall->onLoad(SOAK_THREAD_CHILD, true);
-            soakPlayStatus->load = true;
-            continue;
-        }
-        if(queue->getAvPacketSize() == 0)//加载
-        {
-            if(!soakPlayStatus->load)
-            {
-                soakJavaCall->onLoad(SOAK_THREAD_CHILD, true);
-                soakPlayStatus->load = true;
-            }
-            continue;
-        } else{
-            if(soakPlayStatus->load)
-            {
-                soakJavaCall->onLoad(SOAK_THREAD_CHILD, false);
-                soakPlayStatus->load = false;
-            }
-        }
-        if(codecType == 1)
-        {
-            AVPacket *packet = av_packet_alloc();
-            if(queue->getAvpacket(packet) != 0)
-            {
-                av_free(packet->data);
-                av_free(packet->buf);
-                av_free(packet->side_data);
-                continue;
-            }
-            double time = packet->pts * av_q2d(time_base);
-            LOGE("video clock is %f", time)
-            LOGE("audio clock is %f", soakAudio->clock)
-            if(time < 0)
-            {
-                time = packet->dts * av_q2d(time_base);
-            }
-
-            if(time < clock)
-            {
-                time = clock;
-            }
-            clock = time;
-            double diff = 0;
-            if(soakAudio != nullptr)
-            {
-                diff = soakAudio->clock - clock;
-            }
-            playcount++;
-            if(playcount > 500)
-            {
-                playcount = 0;
-            }
-            if(diff >= 0.5)
-            {
-                if(frameratebig)
-                {
-                    if(playcount % 3 == 0 && packet->flags != AV_PKT_FLAG_KEY)
-                    {
-                        av_free(packet->data);
-                        av_free(packet->buf);
-                        av_free(packet->side_data);
-                        continue;
-                    }
-                } else{
-                    av_free(packet->data);
-                    av_free(packet->buf);
-                    av_free(packet->side_data);
-                    continue;
-                }
-            }
-
-            delayTime = getDelayTime(diff);
-            LOGE("delay time %f diff is %f", delayTime, diff)
-            av_usleep(delayTime * 1000);
-            soakJavaCall->onVideoInfo(SOAK_THREAD_CHILD, clock, duration);
-            soakJavaCall->onDecMediacodec(SOAK_THREAD_CHILD, packet->size, packet->data, 0);
-            av_free(packet->data);
-            av_free(packet->buf);
-            av_free(packet->side_data);
-        }
-        else if(codecType == 0)
-        {
-            AVFrame *frame = av_frame_alloc();
-            if(queue->getAvframe(frame) != 0)
-            {
-                av_frame_free(&frame);
-                av_free(frame);
-                frame = nullptr;
-                continue;
-            }
-            if ((framePts = av_frame_get_best_effort_timestamp(frame)) == AV_NOPTS_VALUE)
-            {
-               framePts = 0;
-            }
-            framePts *= av_q2d(time_base);
-            clock = synchronize(frame, framePts);
-            double diff = 0;
-            if(soakAudio != nullptr)
-            {
-                diff = soakAudio->clock - clock;
-            }
-            delayTime = getDelayTime(diff);
-            LOGE("delay time %f diff is %f", delayTime, diff)
-//            if(diff >= 0.8)
-//            {
-//                av_frame_free(&frame);
-//                av_free(frame);
-//                frame = nullptr;
-//                continue;
-//            }
-
-            playcount++;
-            if(playcount > 500)
-            {
-                playcount = 0;
-            }
-            if(diff >= 0.5)
-            {
-                if(frameratebig)
-                {
-                    if(playcount % 3 == 0)
-                    {
-                        av_frame_free(&frame);
-                        av_free(frame);
-                        frame = nullptr;
-                        queue->clearToKeyFrame();
-                        continue;
-                    }
-                } else{
-                    av_frame_free(&frame);
-                    av_free(frame);
-                    frame = nullptr;
-                    queue->clearToKeyFrame();
-                    continue;
-                }
-            }
-
-            av_usleep(delayTime * 1000);
-            soakJavaCall->onVideoInfo(SOAK_THREAD_CHILD, clock, duration);
-            soakJavaCall->onGlRenderYuv(SOAK_THREAD_CHILD, frame->linesize[0], frame->height, frame->data[0], frame->data[1], frame->data[2]);
-            av_frame_free(&frame);
-            av_free(frame);
-            frame = nullptr;
-        }
-    }
-    isExit = true;
 
 }
 
 SoakVideo::~SoakVideo() {
-    LOGE("video s释放完")
+    pthread_mutex_destroy(&codecMutex);
 }
 
-double SoakVideo::synchronize(AVFrame *srcFrame, double pts) {
-    double frame_delay;
+double SoakVideo::getFrameDiffTime(AVFrame *avFrame, AVPacket *avPacket) {
 
-    if (pts != 0)
-        video_clock = pts; // Get pts,then set video clock to it
-    else
-        pts = video_clock; // Don't get pts,set it to video clock
+    double pts = 0;
+    if(avFrame != nullptr)
+    {
+        pts = avFrame->pts;
+                //av_frame_get_best_effort_timestamp(avFrame);
+    }
+    if(avPacket != nullptr)
+    {
+        pts = avPacket->pts;
+    }
+    if(pts == AV_NOPTS_VALUE)
+    {
+        pts = 0;
+    }
+    pts *= av_q2d(time_base);
 
-    frame_delay = av_q2d(time_base);
-    frame_delay += srcFrame->repeat_pict * (frame_delay * 0.5);
+    if(pts > 0)
+    {
+        clock = pts;
+    }
 
-    video_clock += frame_delay;
-
-    return pts;
+    double diff = audio->clock - clock;
+    return diff;
 }
 
 double SoakVideo::getDelayTime(double diff) {
-    LOGD("audio video diff is %f", diff)
+
     if(diff > 0.003)
     {
-        delayTime = delayTime / 3 * 2;
-        if(delayTime < rate / 2)
+        delayTime = delayTime * 2 / 3;
+        if(delayTime < defaultDelayTime / 2)
         {
-            delayTime = rate / 3 * 2;
+            delayTime = defaultDelayTime * 2 / 3;
         }
-        else if(delayTime > rate * 2)
+        else if(delayTime > defaultDelayTime * 2)
         {
-            delayTime = rate * 2;
+            delayTime = defaultDelayTime * 2;
         }
-
     }
-    else if(diff < -0.003)
+    else if(diff < - 0.003)
     {
         delayTime = delayTime * 3 / 2;
-        if(delayTime < rate / 2)
+        if(delayTime < defaultDelayTime / 2)
         {
-            delayTime = rate / 3 * 2;
+            delayTime = defaultDelayTime * 2 / 3;
         }
-        else if(delayTime > rate * 2)
+        else if(delayTime > defaultDelayTime * 2)
         {
-            delayTime = rate * 2;
+            delayTime = defaultDelayTime * 2;
         }
-    }else if(diff == 0)
-    {
-        delayTime = rate;
     }
-    if(diff > 1.0)
+    else if(diff == 0.003)
+    {
+
+    }
+    if(diff >= 0.5)
     {
         delayTime = 0;
     }
-    if(diff < -1.0)
+    else if(diff <= -0.5)
     {
-        delayTime = rate * 2;
+        delayTime = defaultDelayTime * 2;
     }
-    if(fabs(diff) > 10)
+
+    if(fabs(diff) >= 10)
     {
-        delayTime = rate;
+        delayTime = defaultDelayTime;
     }
     return delayTime;
 }
-
-void SoakVideo::setClock(int secds) {
-    clock = secds;
-}
-
-
-

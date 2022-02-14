@@ -1,83 +1,84 @@
-#pragma once
-#ifndef SOAKPLAYER_SOAKAUDIO_H
-#define SOAKPLAYER_SOAKAUDIO_H
 
+#ifndef CUSTOM_AUDIO_H
+#define CUSTOM_AUDIO_H
 
-#include "SoakBasePlayer.h"
 #include "SoakQueue.h"
-#include "AndroidLog.h"
-#include "SoakPlayStatus.h"
-#include "SoakJavaCall.h"
+#include "PlayStatus.h"
+#include "SoakCallJava.h"
 
 extern "C"
 {
-#include "libswresample/swresample.h"
-#include "libavutil/time.h"
+#include <libavutil/time.h>
+#include "libavcodec/avcodec.h"
+#include <libswresample/swresample.h>
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 };
-class SoakOpenSLES;
-class SoakAudio : public SoakBasePlayer{
+
+class SoakAudio {
 
 public:
-    SoakQueue *queue = NULL;
-    SoakPlayStatus *soakPlayStatus = NULL;
-    SoakJavaCall *soakJavaCall = NULL;
-    pthread_t audioThread;
+    int streamIndex = -1;
+    AVCodecContext *avCodecContext = nullptr;
+    AVCodecParameters *codecPar = nullptr;
+    SoakQueue *queue = nullptr;
+    SoakPlaystatus *playStatus = nullptr;
+    SoakCallJava *callJava = nullptr;
 
-    int ret = 0;//函数调用返回结果
-    int64_t dst_layout = 0;//重采样为立体声
-    int dst_nb_samples = 0;// 计算转换后的sample个数 a * b / c
-    int nb = 0;//转换，返回值为转换后的sample个数
-    uint8_t *out_buffer = NULL;//buffer 内存区域
-    int out_channels = 0;//输出声道数
-    int data_size = 0;//buffer大小
-    enum AVSampleFormat dst_format;
-    //opensl es
+    pthread_t thread_play;
+    AVPacket *avPacket = nullptr;
+    AVFrame *avFrame = nullptr;
+    int ret = 0;
+    uint8_t *buffer = nullptr;
+    int data_size = 0;
+    int sample_rate = 0;
 
-    void *buffer = NULL;
-    int pcmsize = 0;
-    //44100
-    int sample_rate = 44100;
-    bool isExit = false;
-    bool isVideo = false;
+    int duration = 0;
+    AVRational time_base;
+    double clock;//总的播放时长
+    double now_time;//当前frame时间
+    double last_time; //上一次调用时间
 
-    bool isReadPacketFinish = true;
-    AVPacket *packet;
 
     // 引擎接口
-    SLObjectItf engineObject = NULL;
-    SLEngineItf engineEngine = NULL;
+    SLObjectItf engineObject = nullptr;
+    SLEngineItf engineEngine = nullptr;
 
     //混音器
-    SLObjectItf outputMixObject = NULL;
-    SLEnvironmentalReverbItf outputMixEnvironmentalReverb = NULL;
+    SLObjectItf outputMixObject = nullptr;
+    SLEnvironmentalReverbItf outputMixEnvironmentalReverb = nullptr;
     SLEnvironmentalReverbSettings reverbSettings = SL_I3DL2_ENVIRONMENT_PRESET_STONECORRIDOR;
 
     //pcm
-    SLObjectItf pcmPlayerObject = NULL;
-    SLPlayItf pcmPlayerPlay = NULL;
-    SLVolumeItf pcmPlayerVolume = NULL;
+    SLObjectItf pcmPlayerObject = nullptr;
+    SLPlayItf pcmPlayerPlay = nullptr;
 
     //缓冲器队列接口
-    SLAndroidSimpleBufferQueueItf pcmBufferQueue = NULL;
+    SLAndroidSimpleBufferQueueItf pcmBufferQueue = nullptr;
+
+    pthread_mutex_t codecMutex;
+
 public:
-    SoakAudio(SoakPlayStatus *playStatus, SoakJavaCall *javaCall);
+    SoakAudio(SoakPlaystatus *status, int sample_rate, SoakCallJava *callJava);
     ~SoakAudio();
 
-    void setVideo(bool video);
+    void play();
+    int resampleAudio();
 
-    void playAudio();
-    int getPcmData(void **pcm);
-    int initOpenSL();
+    void initOpenSLES();
+
+    int getCurrentSampleRateForOpenSles(int sampleRate);
+
     void pause();
+
     void resume();
+
+    void stop();
+
     void release();
-    int getSLSampleRate();
-    void setClock(int secds);
 
 
 };
 
 
-#endif //SOAKPLAYER_SOAKAUDIO_H
+#endif //CUSTOM_AUDIO_H

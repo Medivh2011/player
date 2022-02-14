@@ -1,45 +1,40 @@
 
-#ifndef SOAKPLAYER_QUEUE_H
-#define SOAKPLAYER_QUEUE_H
+#ifndef CUSTOM_QUEUE_H
+#define CUSTOM_QUEUE_H
 
 #include "queue"
-#include "SoakPlayStatus.h"
+#include "pthread.h"
+#include "AndroidLog.h"
+#include "PlayStatus.h"
 
 extern "C"
 {
-#include <libavcodec/avcodec.h>
-#include "pthread.h"
+#include "libavcodec/avcodec.h"
 };
+
 
 class SoakQueue {
 
 public:
-    std::queue<AVPacket*> queuePacket;
-    std::queue<AVFrame*> queueFrame;
-    pthread_mutex_t mutexFrame;
-    pthread_cond_t condFrame;
+    std::queue<AVPacket *> queuePacket;
     pthread_mutex_t mutexPacket;
     pthread_cond_t condPacket;
-    SoakPlayStatus *playStatus = NULL;
+    SoakPlaystatus *playStatus = nullptr;
 
 public:
-    SoakQueue(SoakPlayStatus *status);
+
+    SoakQueue(SoakPlaystatus *status);
     ~SoakQueue();
-    int putAvpacket(AVPacket *avPacket);
-    int getAvpacket(AVPacket *avPacket);
-    int clearAvpacket();
-    int clearToKeyFrame();
 
-    int putAvframe(AVFrame *avFrame);
-    int getAvframe(AVFrame *avFrame);
-    int clearAvFrame();
+    int putAvPacket(AVPacket *packet);
 
-    void release();
-    int getAvPacketSize();
-    int getAvFrameSize();
+    int getAvPacket(AVPacket *packet);
 
-    int noticeThread();
+    int getQueueSize();
+
+    void clearAvPacket();
+
+    void noticeQueue();
+
 };
-
-
-#endif //SOAKPLAYER_QUEUE_H
+#endif

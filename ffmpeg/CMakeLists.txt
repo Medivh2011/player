@@ -19,14 +19,12 @@ add_library(
         soak_player
         SHARED
         src/main/cpp/SoakPlayer.cpp
-        src/main/cpp/SoakBasePlayer.cpp
-        src/main/cpp/SoakFFmpeg.cpp
-        src/main/cpp/SoakJavaCall.cpp
         src/main/cpp/SoakAudio.cpp
         src/main/cpp/SoakVideo.cpp
+        src/main/cpp/SoakCallJava.cpp
+        src/main/cpp/SoakFFmpeg.cpp
+        src/main/cpp/Playstatus.cpp
         src/main/cpp/SoakQueue.cpp
-        src/main/cpp/SoakPlayStatus.cpp
-        src/main/cpp/SoakAudioChannel.cpp
 )
 add_library(avcodec SHARED IMPORTED)
 set_target_properties(avcodec
