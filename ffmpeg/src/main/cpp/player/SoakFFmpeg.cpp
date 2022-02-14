@@ -116,48 +116,48 @@ void SoakFFmpeg::start() {
         video->audio = audio;
         const char *codecName = ((const AVCodec *) video->avCodecContext->codec)->name;
         supportMediacodec = callJava->onCallIsSupportVideo(codecName);
-//        if (supportMediacodec) {
-//            LOGE("当前设备支持硬解码当前视频");
-//            if (strcasecmp(codecName, "h264") == 0) {
-//                bsFilter = av_bsf_get_by_name("h264_mp4toannexb");
-//            } else if (strcasecmp(codecName, "h265") == 0) {
-//                bsFilter = av_bsf_get_by_name("hevc_mp4toannexb");
-//            }
-//            if (bsFilter == nullptr) {
-//                supportMediacodec = false;
-//                goto end;
-//            }
-//            if (av_bsf_alloc(bsFilter, &video->abs_ctx) != 0) {
-//                supportMediacodec = false;
-//                goto end;
-//            }
-//            if (avcodec_parameters_copy(video->abs_ctx->par_in, video->codecPar) < 0) {
-//                supportMediacodec = false;
-//                av_bsf_free(&video->abs_ctx);
-//                video->abs_ctx = nullptr;
-//                goto end;
-//            }
-//            if (av_bsf_init(video->abs_ctx) != 0) {
-//                supportMediacodec = false;
-//                av_bsf_free(&video->abs_ctx);
-//                video->abs_ctx = nullptr;
-//                goto end;
-//            }
-//            video->abs_ctx->time_base_in = video->time_base;
-//        }
-//        end:
-//        if (supportMediacodec) {
-//            video->codecType = CODEC_MEDIACODEC;
-//            video->callJava->onCallInitMediaCodec(
-//                    codecName,
-//                    video->avCodecContext->width,
-//                    video->avCodecContext->height,
-//                    video->avCodecContext->extradata_size,
-//                    video->avCodecContext->extradata_size,
-//                    video->avCodecContext->extradata,
-//                    video->avCodecContext->extradata
-//            );
-//        }
+        if (supportMediacodec) {
+            LOGE("当前设备支持硬解码当前视频");
+            if (strcasecmp(codecName, "h264") == 0) {
+                bsFilter = av_bsf_get_by_name("h264_mp4toannexb");
+            } else if (strcasecmp(codecName, "h265") == 0) {
+                bsFilter = av_bsf_get_by_name("hevc_mp4toannexb");
+            }
+            if (bsFilter == nullptr) {
+                supportMediacodec = false;
+                goto end;
+            }
+            if (av_bsf_alloc(bsFilter, &video->abs_ctx) != 0) {
+                supportMediacodec = false;
+                goto end;
+            }
+            if (avcodec_parameters_copy(video->abs_ctx->par_in, video->codecPar) < 0) {
+                supportMediacodec = false;
+                av_bsf_free(&video->abs_ctx);
+                video->abs_ctx = nullptr;
+                goto end;
+            }
+            if (av_bsf_init(video->abs_ctx) != 0) {
+                supportMediacodec = false;
+                av_bsf_free(&video->abs_ctx);
+                video->abs_ctx = nullptr;
+                goto end;
+            }
+            video->abs_ctx->time_base_in = video->time_base;
+        }
+        end:
+        if (supportMediacodec) {
+            video->codecType = CODEC_MEDIACODEC;
+            video->callJava->onCallInitMediaCodec(
+                    codecName,
+                    video->avCodecContext->width,
+                    video->avCodecContext->height,
+                    video->avCodecContext->extradata_size,
+                    video->avCodecContext->extradata_size,
+                    video->avCodecContext->extradata,
+                    video->avCodecContext->extradata
+            );
+        }
     }
     if (audio != nullptr) {
         audio->play();
