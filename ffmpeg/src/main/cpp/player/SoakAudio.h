@@ -1,6 +1,6 @@
 
-#ifndef CUSTOM_AUDIO_H
-#define CUSTOM_AUDIO_H
+#ifndef SOAK_AUDIO_H
+#define SOAK_AUDIO_H
 
 #include "SoakQueue.h"
 #include "PlayStatus.h"
@@ -22,7 +22,7 @@ public:
     AVCodecContext *avCodecContext = nullptr;
     AVCodecParameters *codecPar = nullptr;
     SoakQueue *queue = nullptr;
-    SoakPlaystatus *playStatus = nullptr;
+    PlayStatus *playStatus = nullptr;
     SoakCallJava *callJava = nullptr;
 
     pthread_t thread_play;
@@ -59,7 +59,7 @@ public:
     pthread_mutex_t codecMutex;
 
 public:
-    SoakAudio(SoakPlaystatus *status, int sample_rate, SoakCallJava *callJava);
+    SoakAudio(PlayStatus *status, int sample_rate, SoakCallJava *callJava);
     ~SoakAudio();
 
     void play();
@@ -81,4 +81,4 @@ public:
 };
 
 
-#endif //CUSTOM_AUDIO_H
+#endif

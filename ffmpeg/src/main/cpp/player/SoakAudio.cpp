@@ -1,7 +1,7 @@
 
 #include "SoakAudio.h"
 
-SoakAudio::SoakAudio(SoakPlaystatus *status, int sample_rate, SoakCallJava *callJava) {
+SoakAudio::SoakAudio(PlayStatus *status, int sample_rate, SoakCallJava *callJava) {
     this->callJava = callJava;
     this->playStatus = status;
     this->sample_rate = sample_rate;

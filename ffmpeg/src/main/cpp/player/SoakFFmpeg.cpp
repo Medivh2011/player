@@ -1,7 +1,7 @@
 
 #include "SoakFFmpeg.h"
 
-SoakFFmpeg::SoakFFmpeg(SoakPlaystatus *status, SoakCallJava *callJava, const char *url) {
+SoakFFmpeg::SoakFFmpeg(PlayStatus *status, SoakCallJava *callJava, const char *url) {
     this->playStatus = status;
     this->callJava = callJava;
     this->url = url;

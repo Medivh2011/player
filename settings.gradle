@@ -1,3 +1,4 @@
 rootProject.name = "player"
 include ':ffmpeg'
 include ':player'
+include ':effectPlayer'

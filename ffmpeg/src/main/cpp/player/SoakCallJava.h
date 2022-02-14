@@ -1,11 +1,11 @@
 
-#ifndef SOAK_CALLJAVA_H
-#define SOAK_CALLJAVA_H
+#ifndef SOAK_CALL_JAVA_H
+#define SOAK_CALL_JAVA_H
 
 #include "jni.h"
 #include <linux/stddef.h>
 #include <stdint.h>
-#include "AndroidLog.h"
+#include "../AndroidLog.h"
 
 #define MAIN_THREAD 0
 #define CHILD_THREAD 1

@@ -11,7 +11,7 @@ extern "C"
 _JavaVM *javaVM = nullptr;
 SoakCallJava *callJava = nullptr;
 SoakFFmpeg *fFmpeg = nullptr;
-SoakPlaystatus *playstatus = nullptr;
+PlayStatus *playstatus = nullptr;
 
 bool nexit = true;
 pthread_t thread_start;
@@ -45,7 +45,7 @@ Java_com_jiayz_ffmpeg_soakplayer_SoakPlayer__1prepare(
             callJava = new SoakCallJava(javaVM, env, &obj);
         }
         callJava->onCallLoad(MAIN_THREAD, true);
-        playstatus = new SoakPlaystatus();
+        playstatus = new PlayStatus();
         fFmpeg = new SoakFFmpeg(playstatus, callJava, m_url);
         fFmpeg->prepare();
     }

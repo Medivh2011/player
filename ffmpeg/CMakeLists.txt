@@ -18,13 +18,13 @@ include_directories(src/main/cpp/include)
 add_library(
         soak_player
         SHARED
-        src/main/cpp/SoakPlayer.cpp
-        src/main/cpp/SoakAudio.cpp
-        src/main/cpp/SoakVideo.cpp
-        src/main/cpp/SoakCallJava.cpp
-        src/main/cpp/SoakFFmpeg.cpp
-        src/main/cpp/Playstatus.cpp
-        src/main/cpp/SoakQueue.cpp
+        src/main/cpp/player/SoakPlayer.cpp
+        src/main/cpp/player/SoakAudio.cpp
+        src/main/cpp/player/SoakVideo.cpp
+        src/main/cpp/player/SoakCallJava.cpp
+        src/main/cpp/player/SoakFFmpeg.cpp
+        src/main/cpp/player/PlayStatus.cpp
+        src/main/cpp/player/SoakQueue.cpp
 )
 add_library(avcodec SHARED IMPORTED)
 set_target_properties(avcodec

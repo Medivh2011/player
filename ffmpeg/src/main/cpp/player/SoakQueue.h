@@ -1,10 +1,10 @@
 
-#ifndef CUSTOM_QUEUE_H
-#define CUSTOM_QUEUE_H
+#ifndef SOAK_QUEUE_H
+#define SOAK_QUEUE_H
 
 #include "queue"
 #include "pthread.h"
-#include "AndroidLog.h"
+#include "../AndroidLog.h"
 #include "PlayStatus.h"
 
 extern "C"
@@ -19,11 +19,11 @@ public:
     std::queue<AVPacket *> queuePacket;
     pthread_mutex_t mutexPacket;
     pthread_cond_t condPacket;
-    SoakPlaystatus *playStatus = nullptr;
+    PlayStatus *playStatus = nullptr;
 
 public:
 
-    SoakQueue(SoakPlaystatus *status);
+    SoakQueue(PlayStatus *status);
     ~SoakQueue();
 
     int putAvPacket(AVPacket *packet);

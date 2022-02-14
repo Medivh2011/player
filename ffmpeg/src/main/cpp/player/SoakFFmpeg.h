@@ -1,6 +1,6 @@
 
-#ifndef CUSTOM_FFMPEG_H
-#define CUSTOM_FFMPEG_H
+#ifndef SOAK_FFMPEG_H
+#define SOAK_FFMPEG_H
 
 #include "SoakCallJava.h"
 #include "pthread.h"
@@ -25,7 +25,7 @@ public:
     AVFormatContext *pFormatCtx = NULL;
     SoakAudio *audio = NULL;
     SoakVideo *video = NULL;
-    SoakPlaystatus *playStatus = NULL;
+    PlayStatus *playStatus = NULL;
     pthread_mutex_t init_mutex;
     bool exit = false;
     int duration = 0;
@@ -35,7 +35,7 @@ public:
     const AVBitStreamFilter *bsFilter = NULL;
 
 public:
-    SoakFFmpeg(SoakPlaystatus *status, SoakCallJava *callJava, const char *url);
+    SoakFFmpeg(PlayStatus *status, SoakCallJava *callJava, const char *url);
     ~SoakFFmpeg();
 
     void prepare();

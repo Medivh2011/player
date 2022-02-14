@@ -1,7 +1,7 @@
 
 #include "SoakVideo.h"
 
-SoakVideo::SoakVideo(SoakPlaystatus *playStatus, SoakCallJava *callJava) {
+SoakVideo::SoakVideo(PlayStatus *playStatus, SoakCallJava *callJava) {
 
     this->playStatus = playStatus;
     this->callJava = callJava;

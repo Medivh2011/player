@@ -55,10 +55,11 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
     private val pathUrl4 = "/storage/emulated/0/Music/萧敬腾&张杰&袁娅维TIARAY&欧阳娜娜&陈立农-我们同唱一首歌.mp3"
     private val onlineVideoPath = "http://mirror.aarnet.edu.au/pub/TED-talks/911Mothers_2010W-480p.mp4"
     private val pathUrl5 = "https://stream7.iqilu.com/10339/upload_transcode/202002/18/20200218114723HDu3hhxqIT.mp4"
-
+    private val pathUrl12 = "/storage/emulated/0/Music/虎二 - 刺青.flac"
+    private val pathUrl11 = "/storage/emulated/0/Music/虎二 - 窗.mp3"
    //凡人修仙传-21.mp4
     private val onlineAudioPath = "/storage/emulated/0/Movies/凡人修仙传-21.mp4"
-
+    private val playUrl = pathUrl11
     companion object{
         private const val TAG = "MainActivity"
     }
@@ -69,12 +70,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         setContentView(R.layout.activity_main)
         soakPlayer.setGLSurfaceView(glSurface)
         playBtn.setOnClickListener {
-            if (isPlayStop){
-                soakPlayer.setDataSource(onlineAudioPath)
-                soakPlayer.prepare()
-            }else{
-                soakPlayer.resume()
-            }
+          soakPlayer.prepare()
         }
 
         fullScreenBtn.setOnClickListener {
@@ -171,7 +167,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         }
         val storagePermissions = arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         PermissionUtils.checkAndRequestMorePermissions(this,0x12,storagePermissions) {
-            soakPlayer.setDataSource(pathUrl5)
+            soakPlayer.setDataSource(playUrl)
             soakPlayer.prepare()
             controlVideo(false)
         }
@@ -190,7 +186,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         return super.onTouchEvent(event)
     }
 
-    fun controlVideo(isShow:Boolean){
+    private fun controlVideo(isShow:Boolean=false){
         launch {
             delay(5000)
             if (isShow){

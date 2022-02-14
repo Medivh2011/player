@@ -1,6 +1,6 @@
 
-#ifndef CUSTOM_VIDEO_H
-#define CUSTOM_VIDEO_H
+#ifndef SOAK_VIDEO_H
+#define SOAK_VIDEO_H
 
 
 #include "SoakQueue.h"
@@ -25,7 +25,7 @@ public:
     AVCodecContext *avCodecContext = nullptr;
     AVCodecParameters *codecPar = nullptr;
     SoakQueue *queue = nullptr;
-    SoakPlaystatus *playStatus = nullptr;
+    PlayStatus *playStatus = nullptr;
     SoakCallJava *callJava = nullptr;
     AVRational time_base;
     pthread_t thread_play;
@@ -37,7 +37,7 @@ public:
     int codecType = CODEC_YUV;
     AVBSFContext *abs_ctx = nullptr;
 public:
-    SoakVideo(SoakPlaystatus *playStatus, SoakCallJava *callJava);
+    SoakVideo(PlayStatus *playStatus, SoakCallJava *callJava);
     ~SoakVideo();
 
     void play();

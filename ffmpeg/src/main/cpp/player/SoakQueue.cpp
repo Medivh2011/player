@@ -1,7 +1,7 @@
 
 #include "SoakQueue.h"
 
-SoakQueue::SoakQueue(SoakPlaystatus *status) {
+SoakQueue::SoakQueue(PlayStatus *status) {
     this->playStatus = status;
     pthread_mutex_init(&mutexPacket, nullptr);
     pthread_cond_init(&condPacket, nullptr);
