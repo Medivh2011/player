@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
-        soakPlayer.setDataSource(pathUrl1)
+        soakPlayer.setDataSource(onlineAudioPath)
         soakPlayer.isOnlySoft = true
         soakPlayer.setGlSurfaceView(glSurface)
         playBtn.setOnClickListener {
@@ -150,7 +150,7 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
                 height = h
                 Log.e(TAG, "setVideoSizeChangedListener: width: $videoWidth height: $videoHeight, dar: $dar")
                 val dar: Float = dar
-                val viewWidth: Int = resources.displayMetrics.widthPixels
+                val viewWidth: Int = getScreenWidth(this@MainActivity)
                 var viewHeight = 0
                 viewHeight =
                     if (dar.compareTo(Float.NaN) == 0 || dar.compareTo(0.0f) == 0) {
@@ -241,10 +241,10 @@ class MainActivity : AppCompatActivity(),CoroutineScope by MainScope() {
             isFullScreen = true
 
         }
-        val outMetrics = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(outMetrics)
-        widthPixels =  outMetrics.widthPixels
-        heightPixels =   outMetrics.heightPixels
+//        val outMetrics = DisplayMetrics()
+//        windowManager.defaultDisplay.getRealMetrics(outMetrics)
+        widthPixels =  getScreenWidth(this@MainActivity)
+        heightPixels =  getScreenHeight(this@MainActivity)
         GlobalScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 glSurface.layoutParams?.let {
